@@ -54,7 +54,7 @@ class NekoBot(commands.Bot):
         cogs_dir = Path(__file__).parent / "cogs"
         if cogs_dir.exists() and cogs_dir.is_dir():
             for file in cogs_dir.glob("*.py"):
-                if file.stem not in ["__init__"]:
+                if file.stem not in ["__init__", "database"]:
                     cog_name = f"cogs.{file.stem}"
                     try:
                         await self.load_extension(cog_name)
@@ -102,11 +102,19 @@ class NekoBot(commands.Bot):
         except Exception:
             pass
 
+        # Đồng bộ Slash Commands tức thì vào từng Server
+        for guild in self.guilds:
+            try:
+                self.tree.copy_global_to(guild=guild)
+                synced_guild = await self.tree.sync(guild=guild)
+                logger.info(f"⚡ Đã đồng bộ tức thì {len(synced_guild)} lệnh Slash cho Server: {guild.name}")
+            except Exception as e:
+                logger.error(f"Lỗi sync guild {guild.name}: {e}")
+
         try:
-            synced = await self.tree.sync()
-            logger.info(f"⚡ Đã đồng bộ {len(synced)} lệnh Slash Global thành công!")
-        except Exception as e:
-            logger.error(f"Lỗi sync global: {e}")
+            await self.tree.sync()
+        except Exception:
+            pass
 
         logger.info(f"Đang kết nối tới {len(self.guilds)} máy chủ Discord.")
         print("\n" + "="*50)
@@ -121,10 +129,9 @@ bot = NekoBot()
 async def manual_sync(ctx):
     async with ctx.typing():
         try:
-            bot.tree.clear_commands(guild=ctx.guild)
-            await bot.tree.sync(guild=ctx.guild)
-            synced = await bot.tree.sync()
-            await ctx.send(f"🧹 **ĐÃ ĐỒNG BỘ THÀNH CÔNG {len(synced)} LỆNH CHO NEKO BOT!** 🎉")
+            bot.tree.copy_global_to(guild=ctx.guild)
+            synced = await bot.tree.sync(guild=ctx.guild)
+            await ctx.send(f"⚡ **ĐÃ ĐỒNG BỘ THÀNH CÔNG {len(synced)} LỆNH SLASH CHO NEKO BOT TRÊN SERVER NÀY!** 🎉\n(Gõ `/` để thấy đầy đủ các lệnh!)")
         except Exception as e:
             await ctx.send(f"❌ Lỗi khi sync: `{e}`")
 

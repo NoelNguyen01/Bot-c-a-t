@@ -202,6 +202,53 @@ class Casino(commands.Cog):
         )
         await ctx.send(embed=embed)
 
+    @app_commands.command(name="taixiu", description="Đổ xúc xắc Tài Xỉu (Xỉu: 4-10, Tài: 11-17, Bão: x3 tiền)")
+    @app_commands.choices(lua_chon=[
+        app_commands.Choice(name="🟢 Xỉu (4 - 10 điểm)", value="xiu"),
+        app_commands.Choice(name="🔴 Tài (11 - 17 điểm)", value="tai")
+    ])
+    async def slash_tx(self, interaction: discord.Interaction, tien_cuoc: int, lua_chon: app_commands.Choice[str]):
+        if tien_cuoc <= 0:
+            await interaction.response.send_message("❌ Tiền cược phải lớn hơn 0!", ephemeral=True)
+            return
+
+        data = load_db()
+        u = get_user(data, interaction.user.id)
+        if u.get("wallet", 0) < tien_cuoc:
+            await interaction.response.send_message(f"❌ Ví không đủ tiền! Hiện có: **{u.get('wallet', 0):,}** {COIN}", ephemeral=True)
+            return
+
+        d1, d2, d3 = random.randint(1, 6), random.randint(1, 6), random.randint(1, 6)
+        total = d1 + d2 + d3
+        d_str = f"🎲 `{d1}` + `{d2}` + `{d3}` = **{total} điểm**"
+        actual = "xiu" if total <= 10 else "tai"
+        is_bao = (d1 == d2 == d3)
+        user_choice = lua_chon.value
+
+        if is_bao:
+            if user_choice == actual:
+                win = tien_cuoc * 3
+                u["wallet"] += win
+                msg = f"🌪️ **BÃO XÚC XẮC 3 CON {d1}!**\n🎉 Thắng gấp 3: **+{win:,}** {COIN}!"
+            else:
+                u["wallet"] -= tien_cuoc
+                msg = f"🌪️ **BÃO XÚC XẮC 3 CON {d1}!**\n💀 Nhà cái hốt trọn ổ! Mất **-{tien_cuoc:,}** {COIN}!"
+        elif user_choice == actual:
+            u["wallet"] += tien_cuoc
+            msg = f"🎉 **BẠN ĐOÁN ĐÚNG ({actual.upper()})!**\n🏆 Thắng **+{tien_cuoc:,}** {COIN}!"
+        else:
+            u["wallet"] -= tien_cuoc
+            msg = f"💀 **BẠN ĐOÁN SAI ({actual.upper()})!**\n💸 Mất **-{tien_cuoc:,}** {COIN}!"
+
+        save_db(data)
+        embed = discord.Embed(
+            title="🎲 SÒNG BẠC TÀI XỈU 🎲",
+            description=f"**Người chơi:** {interaction.user.mention} | **Cược:** **{tien_cuoc:,}** {COIN} vào **{lua_chon.name}**\n\n"
+                        f"{d_str}\n\n{msg}\n💰 Ví hiện tại: **{u['wallet']:,}** {COIN}",
+            color=discord.Color.green() if user_choice == actual else discord.Color.red()
+        )
+        await interaction.response.send_message(embed=embed)
+
     # ================= 2. XÌ DÁCH BLACKJACK =================
     @commands.command(name="bj", aliases=["blackjack", "xidach"])
     async def cmd_bj(self, ctx, amount: int):
@@ -234,6 +281,38 @@ class Casino(commands.Cog):
         view = BlackjackView(ctx.author, amount, p_hand, d_hand)
         embed = view.build_embed()
         await ctx.send(embed=embed, view=view)
+
+    @app_commands.command(name="blackjack", description="Đánh bài Xì Dách Blackjack 21 điểm với nút bấm")
+    async def slash_bj(self, interaction: discord.Interaction, tien_cuoc: int):
+        if tien_cuoc <= 0:
+            await interaction.response.send_message("❌ Tiền cược phải lớn hơn 0!", ephemeral=True)
+            return
+
+        data = load_db()
+        u = get_user(data, interaction.user.id)
+        if u.get("wallet", 0) < tien_cuoc:
+            await interaction.response.send_message(f"❌ Ví không đủ tiền! Hiện có: **{u.get('wallet', 0):,}** {COIN}", ephemeral=True)
+            return
+
+        p_hand = [draw_card(), draw_card()]
+        d_hand = [draw_card(), draw_card()]
+
+        if calculate_hand(p_hand) == 21:
+            win = int(tien_cuoc * 1.5)
+            u["wallet"] += win
+            save_db(data)
+            embed = discord.Embed(
+                title="🃏 XÌ DÁCH TỰ NHIÊN (BLACKJACK)! 🌟",
+                description=f"**Bài Của Bạn:** {' '.join(card_to_str(c) for c in p_hand)} `(21 ĐIỂM)`\n"
+                            f"🏆 Thắng gấp rưỡi: **+{win:,}** {COIN}! Ví: **{u['wallet']:,}** {COIN}",
+                color=discord.Color.gold()
+            )
+            await interaction.response.send_message(embed=embed)
+            return
+
+        view = BlackjackView(interaction.user, tien_cuoc, p_hand, d_hand)
+        embed = view.build_embed()
+        await interaction.response.send_message(embed=embed, view=view)
 
     # ================= 3. TUNG ĐỒNG XU COINFLIP =================
     @commands.command(name="cf", aliases=["coinflip", "flip"])
@@ -276,6 +355,42 @@ class Casino(commands.Cog):
             color=color
         )
         await ctx.send(embed=embed)
+
+    @app_commands.command(name="coinflip", description="Tung đồng xu Sấp / Ngửa ăn 1:1")
+    @app_commands.choices(mat=[
+        app_commands.Choice(name="🟡 Mặt Ngửa (Heads)", value="ngua"),
+        app_commands.Choice(name="⚪ Mặt Sấp (Tails)", value="sap")
+    ])
+    async def slash_cf(self, interaction: discord.Interaction, tien_cuoc: int, mat: app_commands.Choice[str]):
+        if tien_cuoc <= 0:
+            await interaction.response.send_message("❌ Tiền cược phải lớn hơn 0!", ephemeral=True)
+            return
+
+        data = load_db()
+        u = get_user(data, interaction.user.id)
+        if u.get("wallet", 0) < tien_cuoc:
+            await interaction.response.send_message(f"❌ Ví không đủ tiền! Hiện có: **{u.get('wallet', 0):,}** {COIN}", ephemeral=True)
+            return
+
+        actual = random.choice(["sap", "ngua"])
+        coin_icon = "⚪ **MẶT SẤP**" if actual == "sap" else "🟡 **MẶT NGỬA**"
+
+        if mat.value == actual:
+            u["wallet"] += tien_cuoc
+            msg = f"🎉 **ĐOÁN ĐÚNG!** Thắng **+{tien_cuoc:,}** {COIN}!"
+            color = discord.Color.green()
+        else:
+            u["wallet"] -= tien_cuoc
+            msg = f"💀 **ĐOÁN SAI!** Mất **-{tien_cuoc:,}** {COIN}!"
+            color = discord.Color.red()
+
+        save_db(data)
+        embed = discord.Embed(
+            title="🪙 TUNG ĐỒNG XU MAY RỦI 🪙",
+            description=f"Kết quả rơi xuống: {coin_icon}\n\n{msg}\n💰 Ví hiện tại: **{u['wallet']:,}** {COIN}",
+            color=color
+        )
+        await interaction.response.send_message(embed=embed)
 
     # ================= 4. QUAY HŨ SLOTS =================
     @commands.command(name="slot", aliases=["slots"])
@@ -321,43 +436,48 @@ class Casino(commands.Cog):
         )
         await ctx.send(embed=embed)
 
-    # ================= 5. BẦU CUA TÔM CÁ =================
-    @commands.command(name="baucua", aliases=["bc"])
-    async def cmd_baucua(self, ctx, amount: int, con: str):
-        valid = {"bau": "Bầu 🍐", "cua": "Cua 🦀", "tom": "Tôm 🦐", "ca": "Cá 🐟", "ga": "Gà 🐓", "nai": "Nai 🦌"}
-        con = con.lower()
-        if con not in valid:
-            await ctx.send("❌ Chọn 1 trong các con: `bau`, `cua`, `tom`, `ca`, `ga`, `nai`!")
+    @app_commands.command(name="slots", description="Quay máy xèng hoa quả trúng Jackpot nổ hũ x10")
+    async def slash_slot(self, interaction: discord.Interaction, tien_cuoc: int):
+        if tien_cuoc <= 0:
+            await interaction.response.send_message("❌ Tiền cược phải lớn hơn 0!", ephemeral=True)
             return
 
         data = load_db()
-        u = get_user(data, ctx.author.id)
-        if u.get("wallet", 0) < amount:
-            await ctx.send(f"❌ Bạn không đủ tiền trong ví! (Ví: **{u.get('wallet', 0):,}** {COIN})")
+        u = get_user(data, interaction.user.id)
+        if u.get("wallet", 0) < tien_cuoc:
+            await interaction.response.send_message(f"❌ Ví không đủ tiền! Hiện có: **{u.get('wallet', 0):,}** {COIN}", ephemeral=True)
             return
 
-        items = ["bau", "cua", "tom", "ca", "ga", "nai"]
-        r1, r2, r3 = random.choice(items), random.choice(items), random.choice(items)
-        matches = [r1, r2, r3].count(con)
+        symbols = ["🍎", "🍋", "🍇", "💎", "7️⃣", "👑"]
+        s1, s2, s3 = random.choice(symbols), random.choice(symbols), random.choice(symbols)
+        slot_str = f"╭──────────╮\n│  {s1} │ {s2} │ {s3}  │\n╰──────────╯"
 
-        res_str = f"{valid[r1]} | {valid[r2]} | {valid[r3]}"
-        if matches > 0:
-            win = amount * matches
+        if s1 == s2 == s3:
+            if s1 == "7️⃣" or s1 == "👑":
+                win = tien_cuoc * 10
+                msg = f"💥 **JACKPOT ĐẶC BIỆT!** Thắng gấp 10: **+{win:,}** {COIN}!"
+            else:
+                win = tien_cuoc * 5
+                msg = f"🎉 **TRÚNG 3 HÌNH GIỐNG NHAU!** Thắng gấp 5: **+{win:,}** {COIN}!"
             u["wallet"] += win
-            msg = f"🎉 **TRÚNG {matches} CON {valid[con]}!** Nhận **+{win:,}** {COIN}!"
+            color = discord.Color.gold()
+        elif s1 == s2 or s2 == s3 or s1 == s3:
+            win = int(tien_cuoc * 1.5)
+            u["wallet"] += win
+            msg = f"✨ **TRÚNG 2 HÌNH!** Thắng: **+{win:,}** {COIN}!"
             color = discord.Color.green()
         else:
-            u["wallet"] -= amount
-            msg = f"💀 **TRẬT LỦI!** Mất **-{amount:,}** {COIN}."
+            u["wallet"] -= tien_cuoc
+            msg = f"💀 Không trúng hình nào! Mất **-{tien_cuoc:,}** {COIN}."
             color = discord.Color.red()
 
         save_db(data)
         embed = discord.Embed(
-            title="🎲 BẦU CUA TÔM CÁ 🎲",
-            description=f"Kết quả mở bát: {res_str}\n\n{msg}\n💰 Ví hiện tại: **{u['wallet']:,}** {COIN}",
+            title="🎰 MÁY XÈNG QUAY HŨ (SLOTS) 🎰",
+            description=f"{slot_str}\n\n{msg}\n💰 Ví hiện tại: **{u['wallet']:,}** {COIN}",
             color=color
         )
-        await ctx.send(embed=embed)
+        await interaction.response.send_message(embed=embed)
 
 
 async def setup(bot):

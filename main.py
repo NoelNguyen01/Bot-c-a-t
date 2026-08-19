@@ -102,19 +102,20 @@ class NekoBot(commands.Bot):
         except Exception:
             pass
 
-        # Đồng bộ Slash Commands tức thì vào từng Server
+        # Xóa sạch lệnh trùng ở cấp độ Server (Guild) để chỉ giữ 1 bộ lệnh duy nhất
         for guild in self.guilds:
             try:
-                self.tree.copy_global_to(guild=guild)
-                synced_guild = await self.tree.sync(guild=guild)
-                logger.info(f"⚡ Đã đồng bộ tức thì {len(synced_guild)} lệnh Slash cho Server: {guild.name}")
+                self.tree.clear_commands(guild=guild)
+                await self.tree.sync(guild=guild)
             except Exception as e:
-                logger.error(f"Lỗi sync guild {guild.name}: {e}")
+                logger.warning(f"Lỗi clear guild commands {guild.name}: {e}")
 
+        # Đồng bộ bộ lệnh Global chuẩn
         try:
-            await self.tree.sync()
-        except Exception:
-            pass
+            synced = await self.tree.sync()
+            logger.info(f"⚡ Đã đồng bộ chuẩn xác {len(synced)} lệnh Slash Global (Không bị nhân đôi)!")
+        except Exception as e:
+            logger.error(f"Lỗi sync global: {e}")
 
         logger.info(f"Đang kết nối tới {len(self.guilds)} máy chủ Discord.")
         print("\n" + "="*50)
@@ -129,9 +130,12 @@ bot = NekoBot()
 async def manual_sync(ctx):
     async with ctx.typing():
         try:
-            bot.tree.copy_global_to(guild=ctx.guild)
-            synced = await bot.tree.sync(guild=ctx.guild)
-            await ctx.send(f"⚡ **ĐÃ ĐỒNG BỘ THÀNH CÔNG {len(synced)} LỆNH SLASH CHO NEKO BOT TRÊN SERVER NÀY!** 🎉\n(Gõ `/` để thấy đầy đủ các lệnh!)")
+            # Xóa sạch lệnh guild thừa
+            bot.tree.clear_commands(guild=ctx.guild)
+            await bot.tree.sync(guild=ctx.guild)
+            # Sync global
+            synced = await bot.tree.sync()
+            await ctx.send(f"🧹 **ĐÃ XÓA SẠCH LỆNH TRÙNG & ĐỒNG BỘ {len(synced)} LỆNH DUY NHẤT CHO NEKO BOT!** 🎉")
         except Exception as e:
             await ctx.send(f"❌ Lỗi khi sync: `{e}`")
 

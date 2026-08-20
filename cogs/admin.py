@@ -63,7 +63,7 @@ class Admin(commands.Cog):
     async def cmd_help(self, ctx):
         embed = discord.Embed(
             title="🐱 CẨM NANG HƯỚNG DẪN NEKO BOT 🌸",
-            description="Chào mừng bạn đến với **Neko Bot** — Sòng Bạc, Nuôi Thú Cưng, Kết Hôn & Vay Vốn Ngân Hàng!\n*Tiền tố lệnh:* `!` hoặc `n!`",
+            description="Chào mừng bạn đến với **Neko Bot** — Kinh Tế, Vay Vốn Ngân Hàng, Sòng Bạc & Lì Xì Server!\n*Tiền tố lệnh:* `!` hoặc `n!`",
             color=discord.Color.from_rgb(255, 105, 180)
         )
         embed.set_thumbnail(url="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f431.png")
@@ -110,15 +110,6 @@ class Admin(commands.Cog):
                   "• `!lixi <tiền> <người> [lời chúc]` : Phát bao lì xì cho cả làng giật\n"
                   "• `!lixirieng @user <tiền> [lời chúc]` : Gửi phong bao đỏ riêng cho 1 người\n"
                   "• `!txopen <giây>` : Mở bàn Tài Xỉu cho cả server cùng đặt cược",
-            inline=False
-        )
-
-        embed.add_field(
-            name="🐾 5. Nuôi Thú Cưng & Cửa Hàng & Kết Hôn",
-            value="• `!pet` / `!pet shop` / `!pet buy` / `!pet feed` / `!pet train` / `!pet fight`\n"
-                  "• `!shop` / `!buy` / `!inv` / `!use`\n"
-                  "• `!marry @user` / `!divorce` / `!profile`\n"
-                  "• `!hug`, `!kiss`, `!slap`, `!pat`, `!punch @user`",
             inline=False
         )
 

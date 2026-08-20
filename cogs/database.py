@@ -8,6 +8,8 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 DB_FILE = os.path.join(DATA_DIR, "neko_data.json")
 
+MAX_GLOBAL_LIMIT = 999999999999999999999999999999999999999999999999999
+
 def load_db():
     if not os.path.exists(DB_FILE):
         return {
@@ -43,13 +45,14 @@ def save_db(data):
 
 def parse_amount(val, current_balance: int = 0) -> int:
     """
-    Chuyển đổi các định dạng nhập tiền tệ (k, m, b, t, all, dấu phẩy/chấm) thành số nguyên int.
-    Hỗ trợ lạm phát ngàn tỷ:
+    Chuyển đổi các định dạng nhập tiền tệ thành số nguyên arbitrary-precision int.
+    Hỗ trợ số khổng lồ lên tới 999999999999999999999999999999999999999999999999999:
     - 10k -> 10,000
     - 5m / 5tr -> 5,000,000
     - 10b / 10ty / 10tỷ -> 10,000,000,000 (10 Tỷ)
     - 5t / 5tril / 5nganti -> 5,000,000,000,000 (5 Ngàn Tỷ)
     - all / max / tatca -> current_balance
+    - số thuần túy không giới hạn độ dài
     """
     if val is None:
         return 0
@@ -57,7 +60,9 @@ def parse_amount(val, current_balance: int = 0) -> int:
         return int(val)
 
     s = str(val).strip().lower().replace(",", "").replace(" ", "")
-    if s in ["all", "max", "tatca", "het", "allin"]:
+    if s in ["all", "max", "tatca", "het", "allin", "inf", "infinity"]:
+        if s in ["inf", "infinity"]:
+            return MAX_GLOBAL_LIMIT
         return max(0, int(current_balance))
 
     multiplier = 1
@@ -87,7 +92,11 @@ def parse_amount(val, current_balance: int = 0) -> int:
                 break
 
     try:
-        return int(float(s) * multiplier)
+        if "." in s:
+            res = int(float(s) * multiplier)
+        else:
+            res = int(s) * multiplier
+        return min(MAX_GLOBAL_LIMIT, max(0, res))
     except (ValueError, TypeError):
         return -1
 
@@ -120,7 +129,7 @@ def add_to_treasury(data, amount: int):
         return
     if "treasury" not in data:
         data["treasury"] = {"balance": 0}
-    data["treasury"]["balance"] = data["treasury"].get("balance", 0) + int(amount)
+    data["treasury"]["balance"] = min(MAX_GLOBAL_LIMIT, data["treasury"].get("balance", 0) + int(amount))
 
 def apply_bank_tax(data):
     """Tự động tính và thu 5% thuế trên số dư Bank của tất cả thành viên sau mỗi 5 tiếng"""
@@ -137,8 +146,8 @@ def apply_bank_tax(data):
             bank_balance = udata.get("bank", 0)
             if bank_balance > 0:
                 new_balance = bank_balance
-                for _ in range(cycles):
-                    tax = int(new_balance * 0.05)
+                for _ in range(min(cycles, 50)):
+                    tax = (new_balance * 5) // 100
                     if tax > 0:
                         new_balance -= tax
                         total_tax_collected += tax
@@ -169,23 +178,26 @@ def calculate_loan_debt(data, user_id) -> tuple[int, int, int, bool]:
     overdue_mins = max(0, elapsed_minutes - 30)
     is_overdue = (overdue_mins > 0)
 
-    # Lãi suất gốc 2%/phút (được trừ rate_discount), tối thiểu 0.5%/phút
+    # Sử dụng integer arithmetic để không bao giờ bị overflow hay mất độ chính xác với số 50+ chữ số
     reg_rate = max(0.005, 0.02 - (rate_discount / 100.0))
-    # Lãi suất quá hạn 4%/phút (được trừ rate_discount), tối thiểu 1.0%/phút
     overdue_rate = max(0.01, 0.04 - (rate_discount / 100.0))
 
-    debt = float(principal)
+    reg_mult = int(round((1.0 + reg_rate) * 10000))
+    overdue_mult = int(round((1.0 + overdue_rate) * 10000))
+
+    debt = principal
     for _ in range(regular_mins):
-        debt *= (1.0 + reg_rate)
+        debt = (debt * reg_mult) // 10000
 
     for _ in range(overdue_mins):
-        debt *= (1.0 + overdue_rate)
+        debt = (debt * overdue_mult) // 10000
 
-    total_debt = int(debt)
+    total_debt = debt
     max_debt_cap = principal * 3
     if total_debt > max_debt_cap:
         total_debt = max_debt_cap
 
+    total_debt = min(MAX_GLOBAL_LIMIT, total_debt)
     interest = max(0, total_debt - principal)
     return total_debt, principal, interest, is_overdue
 
@@ -210,13 +222,12 @@ def deduct_loan_debt(data, user_id, pay_amount: int) -> tuple[int, int, bool]:
         return actual_paid, 0, True
     else:
         # Tính chiết khấu trả góp: mỗi 10% nợ trả được giảm thêm 0.5% dư nợ
-        pct_paid = (actual_paid / total_debt) * 100.0
-        milestones = int(pct_paid // 10)
+        milestones = (actual_paid * 10) // total_debt
         discount_bonus = 0
         discount_pct = 0.0
         if milestones >= 1:
-            discount_pct = milestones * 0.5
-            discount_bonus = int(total_debt * (discount_pct / 100.0))
+            discount_pct = float(milestones) * 0.5
+            discount_bonus = (total_debt * int(discount_pct * 10)) // 1000
 
         rem_debt = max(0, total_debt - actual_paid - discount_bonus)
         current_discount = loan_info.get("rate_discount", 0.0)
@@ -234,7 +245,7 @@ def deduct_loan_debt(data, user_id, pay_amount: int) -> tuple[int, int, bool]:
                 "timestamp": time.time(),
                 "rate_discount": new_discount
             }
-            add_to_treasury(data, int(actual_paid * 0.20))
+            add_to_treasury(data, (actual_paid * 20) // 100)
             save_db(data)
             return actual_paid, rem_debt, False
 
@@ -255,7 +266,6 @@ def calculate_win_rate(data, user_id, amount: int) -> float:
     elif global_mode == "drain":
         base_rate = 0.10
     else:
-        # Tỷ lệ thích ứng với quy mô ngàn tỷ
         if amount <= 500000:          # <= 500k
             base_rate = 0.48
         elif amount <= 50000000:      # <= 50M
@@ -268,7 +278,7 @@ def calculate_win_rate(data, user_id, amount: int) -> float:
             base_rate = 0.12
         elif amount <= 1000000000000: # <= 1,000B (1 Ngàn Tỷ)
             base_rate = 0.08
-        else:                         # > 1 Ngàn Tỷ
+        else:                         # > 1 Ngàn Tỷ -> 999999999999999999999999999999999999999999999999999
             base_rate = 0.05
 
     return base_rate

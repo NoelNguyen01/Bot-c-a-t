@@ -251,21 +251,11 @@ class Economy(commands.Cog):
             return
 
         u = get_user(data, ctx.author.id)
-        total_assets = u.get("wallet", 0) + u.get("bank", 0)
-
-        # Hạn mức vay thích ứng lạm phát ngàn tỷ
-        if total_assets >= 500_000_000_000:
-            max_limit = 1_000_000_000_000  # 1,000 Tỷ (1 Trillion)
-            tier_name = "Siêu Tài Phiệt (Tài sản ≥ 500B)"
-        elif total_assets >= 50_000_000_000:
-            max_limit = 100_000_000_000   # 100 Tỷ
-            tier_name = "VIP (Tài sản ≥ 50B)"
-        else:
-            max_limit = 30_000_000_000    # 30 Tỷ
-            tier_name = "Thường (Tài sản < 50B)"
+        max_limit = 999999999999999999999999999999999999999999999999999
+        tier_name = "Vô Cực (Tối đa 999999999999999999999999999999999999999999999999999)"
 
         if loan_amt > max_limit:
-            await ctx.send(f"❌ Hạn mức vay của bạn ({tier_name}) tối đa là **{max_limit:,}** {COIN}!")
+            await ctx.send(f"❌ Hạn mức vay tối đa là **{max_limit:,}** {COIN}!")
             return
 
         u["wallet"] = u.get("wallet", 0) + loan_amt
@@ -293,7 +283,7 @@ class Economy(commands.Cog):
         )
         await ctx.send(embed=embed)
 
-    @app_commands.command(name="vay", description="Vay vốn Ngân Hàng (Hạn mức lên tới 1,000 Tỷ theo tài sản)")
+    @app_commands.command(name="vay", description="Vay vốn Ngân Hàng (Hạn mức lên tới 999999999999999999999999999999999999999999999999999)")
     async def slash_vay(self, interaction: discord.Interaction, so_tien: str):
         data = load_db()
         uid = str(interaction.user.id)
@@ -310,20 +300,11 @@ class Economy(commands.Cog):
             return
 
         u = get_user(data, interaction.user.id)
-        total_assets = u.get("wallet", 0) + u.get("bank", 0)
-
-        if total_assets >= 500_000_000_000:
-            max_limit = 1_000_000_000_000
-            tier_name = "Siêu Tài Phiệt (Tài sản ≥ 500B)"
-        elif total_assets >= 50_000_000_000:
-            max_limit = 100_000_000_000
-            tier_name = "VIP (Tài sản ≥ 50B)"
-        else:
-            max_limit = 30_000_000_000
-            tier_name = "Thường (Tài sản < 50B)"
+        max_limit = 999999999999999999999999999999999999999999999999999
+        tier_name = "Vô Cực (Tối đa 999999999999999999999999999999999999999999999999999)"
 
         if loan_amt > max_limit:
-            await interaction.response.send_message(f"❌ Hạn mức vay của bạn ({tier_name}) tối đa là **{max_limit:,}** {COIN}!", ephemeral=True)
+            await interaction.response.send_message(f"❌ Hạn mức vay tối đa là **{max_limit:,}** {COIN}!", ephemeral=True)
             return
 
         u["wallet"] = u.get("wallet", 0) + loan_amt
@@ -1109,15 +1090,19 @@ class Economy(commands.Cog):
             await ctx.send(f"⏳ Bạn vừa đi lao động công ích mệt rồi, nghỉ ngơi **{rem // 60}p {rem % 60}s** nữa mới được cuốc đất tiếp!")
             return
 
-        # Tăng mức trừ nợ thích ứng lạm phát (1B - 3B)
+        # Tăng mức trừ nợ thích ứng lạm phát (5% - 15% tổng nợ hoặc tối thiểu 1B - 3B)
+        base_cleared = random.randint(1_000_000_000, 3_000_000_000)
+        pct_cleared = int(total_debt * random.uniform(0.05, 0.15))
+        debt_cleared_val = max(base_cleared, pct_cleared)
+
         tasks = [
-            ("Quét dọn sòng bạc Casino sau giờ bão xúc xắc", random.randint(1_000_000_000, 2_500_000_000)),
-            ("Lao công chùi rửa toilet phòng Vip Server", random.randint(1_200_000_000, 3_000_000_000)),
-            ("Chạy bàn bưng bê nước phục vụ các Đại Gia sòng bạc", random.randint(1_000_000_000, 2_000_000_000)),
-            ("Nhặt bóng sân Golf cho các chủ nợ", random.randint(1_500_000_000, 3_000_000_000)),
-            ("Làm culi chạy deadline chuộc tội đánh bạc thua", random.randint(1_000_000_000, 2_500_000_000))
+            ("Quét dọn sòng bạc Casino sau giờ bão xúc xắc", debt_cleared_val),
+            ("Lao công chùi rửa toilet phòng Vip Server", debt_cleared_val),
+            ("Chạy bàn bưng bê nước phục vụ các Đại Gia sòng bạc", debt_cleared_val),
+            ("Nhặt bóng sân Golf cho các chủ nợ", debt_cleared_val),
+            ("Làm culi chạy deadline chuộc tội đánh bạc thua", debt_cleared_val)
         ]
-        task_name, debt_cleared_val = random.choice(tasks)
+        task_name, _ = random.choice(tasks)
         u["last_laodong"] = now
 
         paid, rem_debt, cleared = deduct_loan_debt(data, ctx.author.id, debt_cleared_val)
@@ -1138,10 +1123,10 @@ class Economy(commands.Cog):
                         f"{status_text}",
             color=color
         )
-        embed.set_footer(text="Mỗi 15 phút được lao động công ích 1 lần để xóa 1B - 3B nợ!")
+        embed.set_footer(text="Mỗi 15 phút được lao động công ích 1 lần để xóa 5% - 15% nợ!")
         await ctx.send(embed=embed)
 
-    @app_commands.command(name="laodong", description="Lao động công ích chuộc nợ ngân hàng (15 phút/lần, trừ 1B - 3B nợ)")
+    @app_commands.command(name="laodong", description="Lao động công ích chuộc nợ ngân hàng (15 phút/lần, trừ 5% - 15% nợ)")
     async def slash_laodong(self, interaction: discord.Interaction):
         data = load_db()
         apply_bank_tax(data)
@@ -1159,14 +1144,18 @@ class Economy(commands.Cog):
             await interaction.response.send_message(f"⏳ Bạn vừa đi lao động công ích mệt rồi, nghỉ ngơi **{rem // 60}p {rem % 60}s** nữa mới được cuốc đất tiếp!", ephemeral=True)
             return
 
+        base_cleared = random.randint(1_000_000_000, 3_000_000_000)
+        pct_cleared = int(total_debt * random.uniform(0.05, 0.15))
+        debt_cleared_val = max(base_cleared, pct_cleared)
+
         tasks = [
-            ("Quét dọn sòng bạc Casino sau giờ bão xúc xắc", random.randint(1_000_000_000, 2_500_000_000)),
-            ("Lao công chùi rửa toilet phòng Vip Server", random.randint(1_200_000_000, 3_000_000_000)),
-            ("Chạy bàn bưng bê nước phục vụ các Đại Gia sòng bạc", random.randint(1_000_000_000, 2_000_000_000)),
-            ("Nhặt bóng sân Golf cho các chủ nợ", random.randint(1_500_000_000, 3_000_000_000)),
-            ("Làm culi chạy deadline chuộc tội đánh bạc thua", random.randint(1_000_000_000, 2_500_000_000))
+            ("Quét dọn sòng bạc Casino sau giờ bão xúc xắc", debt_cleared_val),
+            ("Lao công chùi rửa toilet phòng Vip Server", debt_cleared_val),
+            ("Chạy bàn bưng bê nước phục vụ các Đại Gia sòng bạc", debt_cleared_val),
+            ("Nhặt bóng sân Golf cho các chủ nợ", debt_cleared_val),
+            ("Làm culi chạy deadline chuộc tội đánh bạc thua", debt_cleared_val)
         ]
-        task_name, debt_cleared_val = random.choice(tasks)
+        task_name, _ = random.choice(tasks)
         u["last_laodong"] = now
 
         paid, rem_debt, cleared = deduct_loan_debt(data, interaction.user.id, debt_cleared_val)

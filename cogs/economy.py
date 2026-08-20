@@ -283,7 +283,8 @@ class Economy(commands.Cog):
                         f"• **Lãi suất:** `2% mỗi 1 phút` (Tính lãi kép theo phút)\n"
                         f"• **Thời hạn vay gốc:** `30 Phút`\n"
                         f"• **Quá hạn:** Tự động gia hạn thêm 18 phút (60%) với `lãi phạt 4%/phút`\n"
-                        f"• **Trần nợ tối đa:** 300% gốc ({amount * 3:,} {COIN})\n\n"
+                        f"• **Trần nợ tối đa:** 300% gốc ({amount * 3:,} {COIN})\n"
+                        f"• **🎁 Ưu đãi trả góp:** Cứ trả góp đạt 10% nợ được **giảm 0.5% lãi**!\n\n"
                         f"💰 Tiền đã cộng vào ví! Gõ `!trano all` khi có tiền để thanh toán nợ.",
             color=discord.Color.gold()
         )
@@ -333,7 +334,8 @@ class Economy(commands.Cog):
             description=f"🎉 **{interaction.user.mention}** đã vay thành công **+{so_tien:,}** {COIN}!\n\n"
                         f"• **Hạn mức:** {tier_name}\n"
                         f"• **Lãi suất:** `2% mỗi 1 phút`\n"
-                        f"• **Thời hạn:** `30 Phút` (Quá hạn phạt 4%/phút)\n\n"
+                        f"• **Thời hạn:** `30 Phút` (Quá hạn phạt 4%/phút)\n"
+                        f"• **🎁 Ưu đãi trả góp:** Cứ trả góp đạt 10% nợ được **giảm 0.5% lãi**!\n\n"
                         f"💰 Tiền đã cộng vào ví! Gõ `/trano` để thanh toán nợ.",
             color=discord.Color.gold()
         )
@@ -378,14 +380,37 @@ class Economy(commands.Cog):
             save_db(data)
             await ctx.send(f"🎉 **CHÚC MỪNG BẠN ĐÃ TRẢ SẠCH NỢ!** Đã thanh toán **{actual_paid:,}** {COIN} (Gốc: {principal:,} + Lãi: {interest:,})!")
         else:
-            u["wallet"] -= pay_amt
-            new_debt = total_debt - pay_amt
-            data["loans"][uid]["principal"] = new_debt
-            data["loans"][uid]["timestamp"] = time.time()
-            save_db(data)
-            await ctx.send(f"✅ Đã trả bớt **{pay_amt:,}** {COIN}! Số nợ còn lại: **{new_debt:,}** {COIN}.")
+            pct_paid = (pay_amt / total_debt) * 100.0
+            milestones = int(pct_paid // 10)
+            discount_bonus = 0
+            discount_pct = 0.0
+            if milestones >= 1:
+                discount_pct = milestones * 0.5
+                discount_bonus = int(total_debt * (discount_pct / 100.0))
 
-    @app_commands.command(name="trano", description="Trả nợ ngân hàng (gốc + lãi)")
+            u["wallet"] -= pay_amt
+            new_debt = max(0, total_debt - pay_amt - discount_bonus)
+            current_discount = loans[uid].get("rate_discount", 0.0)
+            new_discount = min(1.5, current_discount + discount_pct)
+
+            if new_debt == 0:
+                del data["loans"][uid]
+                add_to_treasury(data, interest)
+                save_db(data)
+                await ctx.send(f"🎉 **BẠN ĐÃ TRẢ SẠCH NỢ!** Đã thanh toán **{pay_amt:,}** {COIN} (Được chiết khấu **-{discount_bonus:,}** {COIN} do trả góp đạt mốc)!")
+            else:
+                data["loans"][uid]["principal"] = new_debt
+                data["loans"][uid]["timestamp"] = time.time()
+                data["loans"][uid]["rate_discount"] = new_discount
+                add_to_treasury(data, int(pay_amt * 0.20))
+                save_db(data)
+
+                bonus_info = ""
+                if discount_bonus > 0:
+                    bonus_info = f"\n🎁 **ƯU ĐÃI TRẢ GÓP:** Đã trả **{pct_paid:.1f}%** tổng nợ $\rightarrow$ Được **giảm trừ thêm {discount_pct:.1f}% lãi (-{discount_bonus:,} {COIN})**!"
+                await ctx.send(f"✅ Đã trả góp **{pay_amt:,}** {COIN}!{bonus_info}\n💳 Số nợ còn lại: **{new_debt:,}** {COIN} (Được giảm lãi suất: `-{new_discount:.1f}%/phút`).")
+
+    @app_commands.command(name="trano", description="Trả nợ ngân hàng (gốc + lãi, trả góp mỗi 10% được giảm 0.5% lãi)")
     async def slash_trano(self, interaction: discord.Interaction, so_tien: Optional[int] = None):
         data = load_db()
         uid = str(interaction.user.id)
@@ -417,12 +442,35 @@ class Economy(commands.Cog):
             save_db(data)
             await interaction.response.send_message(f"🎉 **BẠN ĐÃ TRẢ SẠCH NỢ!** Đã thanh toán **{actual_paid:,}** {COIN} (Gốc: {principal:,} + Lãi: {interest:,})!")
         else:
+            pct_paid = (pay_amt / total_debt) * 100.0
+            milestones = int(pct_paid // 10)
+            discount_bonus = 0
+            discount_pct = 0.0
+            if milestones >= 1:
+                discount_pct = milestones * 0.5
+                discount_bonus = int(total_debt * (discount_pct / 100.0))
+
             u["wallet"] -= pay_amt
-            new_debt = total_debt - pay_amt
-            data["loans"][uid]["principal"] = new_debt
-            data["loans"][uid]["timestamp"] = time.time()
-            save_db(data)
-            await interaction.response.send_message(f"✅ Đã trả bớt **{pay_amt:,}** {COIN}! Số nợ còn lại: **{new_debt:,}** {COIN}.")
+            new_debt = max(0, total_debt - pay_amt - discount_bonus)
+            current_discount = loans[uid].get("rate_discount", 0.0)
+            new_discount = min(1.5, current_discount + discount_pct)
+
+            if new_debt == 0:
+                del data["loans"][uid]
+                add_to_treasury(data, interest)
+                save_db(data)
+                await interaction.response.send_message(f"🎉 **BẠN ĐÃ TRẢ SẠCH NỢ!** Đã thanh toán **{pay_amt:,}** {COIN} (Được chiết khấu **-{discount_bonus:,}** {COIN} do trả góp đạt mốc)!")
+            else:
+                data["loans"][uid]["principal"] = new_debt
+                data["loans"][uid]["timestamp"] = time.time()
+                data["loans"][uid]["rate_discount"] = new_discount
+                add_to_treasury(data, int(pay_amt * 0.20))
+                save_db(data)
+
+                bonus_info = ""
+                if discount_bonus > 0:
+                    bonus_info = f"\n🎁 **ƯU ĐÃI TRẢ GÓP:** Đã trả **{pct_paid:.1f}%** tổng nợ $\rightarrow$ Được **giảm trừ thêm {discount_pct:.1f}% lãi (-{discount_bonus:,} {COIN})**!"
+                await interaction.response.send_message(f"✅ Đã trả góp **{pay_amt:,}** {COIN}!{bonus_info}\n💳 Số nợ còn lại: **{new_debt:,}** {COIN} (Được giảm lãi suất: `-{new_discount:.1f}%/phút`).")
 
     @commands.command(name="topno", aliases=["banno", "chuachom"])
     async def cmd_topno(self, ctx):

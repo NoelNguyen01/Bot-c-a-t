@@ -107,6 +107,7 @@ def calculate_loan_debt(data, user_id) -> tuple[int, int, int, bool]:
     loan_info = loans[uid]
     principal = loan_info.get("principal", 0)
     loan_time = loan_info.get("timestamp", time.time())
+    rate_discount = loan_info.get("rate_discount", 0.0)
 
     now = time.time()
     elapsed_minutes = int((now - loan_time) // 60)
@@ -118,12 +119,17 @@ def calculate_loan_debt(data, user_id) -> tuple[int, int, int, bool]:
     overdue_mins = max(0, elapsed_minutes - 30)
     is_overdue = (overdue_mins > 0)
 
+    # Lãi suất gốc 2%/phút (được trừ rate_discount), tối thiểu 0.5%/phút
+    reg_rate = max(0.005, 0.02 - (rate_discount / 100.0))
+    # Lãi suất quá hạn 4%/phút (được trừ rate_discount), tối thiểu 1.0%/phút
+    overdue_rate = max(0.01, 0.04 - (rate_discount / 100.0))
+
     debt = float(principal)
     for _ in range(regular_mins):
-        debt *= 1.02
+        debt *= (1.0 + reg_rate)
 
     for _ in range(overdue_mins):
-        debt *= 1.04
+        debt *= (1.0 + overdue_rate)
 
     total_debt = int(debt)
     max_debt_cap = principal * 3
@@ -135,7 +141,7 @@ def calculate_loan_debt(data, user_id) -> tuple[int, int, int, bool]:
 
 def deduct_loan_debt(data, user_id, pay_amount: int) -> tuple[int, int, bool]:
     """
-    Trừ nợ vay ngân hàng.
+    Trừ nợ vay ngân hàng (có tính ưu đãi trả góp: giảm 0.5% lãi cho mỗi 10% nợ trả).
     Trả về: (số tiền thực trả, số nợ còn lại, đã trả hết nợ hay chưa)
     """
     uid = str(user_id)
@@ -143,7 +149,9 @@ def deduct_loan_debt(data, user_id, pay_amount: int) -> tuple[int, int, bool]:
     if total_debt <= 0 or pay_amount <= 0:
         return 0, 0, False
 
+    loan_info = data.get("loans", {}).get(uid, {})
     actual_paid = min(pay_amount, total_debt)
+
     if actual_paid >= total_debt:
         if uid in data.get("loans", {}):
             del data["loans"][uid]
@@ -151,14 +159,34 @@ def deduct_loan_debt(data, user_id, pay_amount: int) -> tuple[int, int, bool]:
         save_db(data)
         return actual_paid, 0, True
     else:
-        rem_debt = total_debt - actual_paid
-        data["loans"][uid] = {
-            "principal": rem_debt,
-            "timestamp": time.time()
-        }
-        add_to_treasury(data, int(actual_paid * 0.20))
-        save_db(data)
-        return actual_paid, rem_debt, False
+        # Tính chiết khấu trả góp: mỗi 10% nợ trả được giảm thêm 0.5% dư nợ
+        pct_paid = (actual_paid / total_debt) * 100.0
+        milestones = int(pct_paid // 10)
+        discount_bonus = 0
+        discount_pct = 0.0
+        if milestones >= 1:
+            discount_pct = milestones * 0.5
+            discount_bonus = int(total_debt * (discount_pct / 100.0))
+
+        rem_debt = max(0, total_debt - actual_paid - discount_bonus)
+        current_discount = loan_info.get("rate_discount", 0.0)
+        new_discount = min(1.5, current_discount + discount_pct)
+
+        if rem_debt == 0:
+            if uid in data.get("loans", {}):
+                del data["loans"][uid]
+            add_to_treasury(data, interest)
+            save_db(data)
+            return actual_paid, 0, True
+        else:
+            data["loans"][uid] = {
+                "principal": rem_debt,
+                "timestamp": time.time(),
+                "rate_discount": new_discount
+            }
+            add_to_treasury(data, int(actual_paid * 0.20))
+            save_db(data)
+            return actual_paid, rem_debt, False
 
 def calculate_win_rate(data, user_id, amount: int) -> float:
     uid = str(user_id)

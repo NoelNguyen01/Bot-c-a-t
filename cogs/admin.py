@@ -73,7 +73,7 @@ class Admin(commands.Cog):
                   "• `!dep <tiền>` / `/dep` : Gửi tiền vào ngân hàng\n"
                   "• `!with <tiền>` / `/with` : Rút tiền ra ví\n"
                   "• `!vay <tiền>` / `/vay` : Vay ngân hàng (Tối đa 30M - 100M, lãi 2%/phút)\n"
-                  "• `!trano <tiền>` / `/trano` : Trả nợ ngân hàng\n"
+                  "• `!trano <tiền>` / `/trano` : Trả nợ ngân hàng (Trả góp mỗi 10% nợ được giảm 0.5% lãi)\n"
                   "• `!laodong` / `/laodong` : Lao động công ích chuộc nợ (-1M đến -3M nợ/lần, 15p)\n"
                   "• `!topno` / `/topno` : Bảng phong thần Chúa Chổm ngập nợ\n"
                   "• `!daily` / `/daily` : Điểm danh nhận tiền hằng ngày + streak\n"

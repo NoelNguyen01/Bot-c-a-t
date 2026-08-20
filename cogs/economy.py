@@ -102,10 +102,7 @@ class Economy(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    # ================= 1. XEM VÍ & NGÂN HÀNG & NỢ NẦN =================
-    @commands.command(name="bal", aliases=["balance", "vi", "money"])
-    async def cmd_bal(self, ctx, user: Optional[discord.Member] = None):
-        target = user or ctx.author
+    def _get_bal_embed(self, target: discord.Member):
         data = load_db()
         apply_bank_tax(data)
         u = get_user(data, target.id)
@@ -113,7 +110,6 @@ class Economy(commands.Cog):
         bank = u.get("bank", 0)
         total = wallet + bank
 
-        # Kiểm tra nợ ngân hàng
         total_debt, principal, interest, is_overdue = calculate_loan_debt(data, target.id)
 
         embed = discord.Embed(
@@ -129,12 +125,25 @@ class Economy(commands.Cog):
             status_tag = "🚨 **[QUÁ HẠN - LÃI PHẠT 4%/P]**" if is_overdue else "⏳ **[ĐANG VAY - LÃI 2%/P]**"
             embed.add_field(
                 name="💳 Nợ Vay Ngân Hàng:",
-                value=f"{status_tag}\n• Nợ gốc: **{principal:,}** {COIN}\n• Lãi phát sinh: **+{interest:,}** {COIN}\n👉 **TỔNG CẦN TRẢ:** **{total_debt:,}** {COIN}\n*(Gõ `!trano all` để thanh toán)*",
+                value=f"{status_tag}\n• Nợ gốc: **{principal:,}** {COIN}\n• Lãi phát sinh: **+{interest:,}** {COIN}\n👉 **TỔNG CẦN TRẢ:** **{total_debt:,}** {COIN}\n*(Gõ `!trano all` hoặc `/trano` để thanh toán)*",
                 inline=False
             )
 
-        embed.set_footer(text="Thuế Bank 5% mỗi 5h • Giao dịch chuyển tiền !pay phí 20%")
+        embed.set_footer(text="Thuế Bank 5% mỗi 5h • Giao dịch chuyển tiền phí 20%")
+        return embed
+
+    # ================= 1. XEM VÍ & NGÂN HÀNG =================
+    @commands.command(name="bal", aliases=["balance", "vi", "money"])
+    async def cmd_bal(self, ctx, user: Optional[discord.Member] = None):
+        target = user or ctx.author
+        embed = self._get_bal_embed(target)
         await ctx.send(embed=embed)
+
+    @app_commands.command(name="bal", description="Xem số dư ví tiền mặt, ngân hàng và nợ vay")
+    async def slash_bal(self, interaction: discord.Interaction, nguoi_dung: Optional[discord.Member] = None):
+        target = nguoi_dung or interaction.user
+        embed = self._get_bal_embed(target)
+        await interaction.response.send_message(embed=embed)
 
     # ================= 2. GỬI & RÚT NGÂN HÀNG =================
     @commands.command(name="dep", aliases=["deposit"])
@@ -162,6 +171,26 @@ class Economy(commands.Cog):
         save_db(data)
         await ctx.send(f"🏦 Bạn đã gửi **{dep_amt:,}** {COIN} vào Ngân Hàng an toàn! (Ngân hàng: **{u['bank']:,}** {COIN})")
 
+    @app_commands.command(name="dep", description="Gửi tiền vào Ngân Hàng (chống bị cướp)")
+    async def slash_dep(self, interaction: discord.Interaction, so_tien: int):
+        if so_tien <= 0:
+            await interaction.response.send_message("❌ Số tiền phải lớn hơn 0!", ephemeral=True)
+            return
+
+        data = load_db()
+        apply_bank_tax(data)
+        u = get_user(data, interaction.user.id)
+        wallet = u.get("wallet", 0)
+
+        if so_tien > wallet:
+            await interaction.response.send_message(f"❌ Ví không đủ tiền! Hiện có: **{wallet:,}** {COIN}", ephemeral=True)
+            return
+
+        u["wallet"] -= so_tien
+        u["bank"] = u.get("bank", 0) + so_tien
+        save_db(data)
+        await interaction.response.send_message(f"🏦 Bạn đã gửi **{so_tien:,}** {COIN} vào Ngân Hàng! (Bank: **{u['bank']:,}** {COIN})")
+
     @commands.command(name="with", aliases=["withdraw"])
     async def cmd_with(self, ctx, amount: str):
         data = load_db()
@@ -187,6 +216,26 @@ class Economy(commands.Cog):
         save_db(data)
         await ctx.send(f"💵 Bạn đã rút **{with_amt:,}** {COIN} ra ví tiền mặt! (Ví: **{u['wallet']:,}** {COIN})")
 
+    @app_commands.command(name="with", description="Rút tiền từ Ngân Hàng ra ví tiền mặt")
+    async def slash_with(self, interaction: discord.Interaction, so_tien: int):
+        if so_tien <= 0:
+            await interaction.response.send_message("❌ Số tiền phải lớn hơn 0!", ephemeral=True)
+            return
+
+        data = load_db()
+        apply_bank_tax(data)
+        u = get_user(data, interaction.user.id)
+        bank = u.get("bank", 0)
+
+        if so_tien > bank:
+            await interaction.response.send_message(f"❌ Ngân hàng không đủ tiền! Hiện có: **{bank:,}** {COIN}", ephemeral=True)
+            return
+
+        u["bank"] -= so_tien
+        u["wallet"] = u.get("wallet", 0) + so_tien
+        save_db(data)
+        await interaction.response.send_message(f"💵 Bạn đã rút **{so_tien:,}** {COIN} ra ví! (Ví: **{u['wallet']:,}** {COIN})")
+
     # ================= 3. HỆ THỐNG VAY NGÂN HÀNG =================
     @commands.command(name="vay", aliases=["loan", "vaytien"])
     async def cmd_vay(self, ctx, amount: int):
@@ -198,7 +247,6 @@ class Economy(commands.Cog):
         uid = str(ctx.author.id)
         loans = data.get("loans", {})
 
-        # Kiểm tra nợ cũ
         if uid in loans and loans[uid].get("principal", 0) > 0:
             total_debt, principal, interest, _ = calculate_loan_debt(data, ctx.author.id)
             await ctx.send(f"❌ Bạn đang có khoản nợ chưa trả (**{total_debt:,}** {COIN})! Vui lòng dùng `!trano` trả hết trước khi vay tiếp.")
@@ -207,7 +255,6 @@ class Economy(commands.Cog):
         u = get_user(data, ctx.author.id)
         total_assets = u.get("wallet", 0) + u.get("bank", 0)
 
-        # Tính hạn mức vay
         if total_assets >= 50000000:
             max_limit = 100000000
             tier_name = "VIP (Tài sản ≥ 50M)"
@@ -219,7 +266,6 @@ class Economy(commands.Cog):
             await ctx.send(f"❌ Hạn mức vay của bạn ({tier_name}) tối đa là **{max_limit:,}** {COIN}!")
             return
 
-        # Giải ngân
         u["wallet"] = u.get("wallet", 0) + amount
         if "loans" not in data:
             data["loans"] = {}
@@ -242,6 +288,56 @@ class Economy(commands.Cog):
             color=discord.Color.gold()
         )
         await ctx.send(embed=embed)
+
+    @app_commands.command(name="vay", description="Vay vốn Ngân Hàng (Lãi suất 2%/phút, hạn mức 30M - 100M)")
+    async def slash_vay(self, interaction: discord.Interaction, so_tien: int):
+        if so_tien <= 0:
+            await interaction.response.send_message("❌ Số tiền vay phải lớn hơn 0!", ephemeral=True)
+            return
+
+        data = load_db()
+        uid = str(interaction.user.id)
+        loans = data.get("loans", {})
+
+        if uid in loans and loans[uid].get("principal", 0) > 0:
+            total_debt, _, _, _ = calculate_loan_debt(data, interaction.user.id)
+            await interaction.response.send_message(f"❌ Bạn đang có nợ chưa trả (**{total_debt:,}** {COIN})! Hãy dùng `/trano` trước.", ephemeral=True)
+            return
+
+        u = get_user(data, interaction.user.id)
+        total_assets = u.get("wallet", 0) + u.get("bank", 0)
+
+        if total_assets >= 50000000:
+            max_limit = 100000000
+            tier_name = "VIP (Tài sản ≥ 50M)"
+        else:
+            max_limit = 30000000
+            tier_name = "Thường (Tài sản < 50M)"
+
+        if so_tien > max_limit:
+            await interaction.response.send_message(f"❌ Hạn mức vay của bạn ({tier_name}) tối đa là **{max_limit:,}** {COIN}!", ephemeral=True)
+            return
+
+        u["wallet"] = u.get("wallet", 0) + so_tien
+        if "loans" not in data:
+            data["loans"] = {}
+        data["loans"][uid] = {
+            "principal": so_tien,
+            "timestamp": time.time(),
+            "tier": tier_name
+        }
+        save_db(data)
+
+        embed = discord.Embed(
+            title="💳 HỢP ĐỒNG VAY NGÂN HÀNG THÀNH CÔNG! 🏦",
+            description=f"🎉 **{interaction.user.mention}** đã vay thành công **+{so_tien:,}** {COIN}!\n\n"
+                        f"• **Hạn mức:** {tier_name}\n"
+                        f"• **Lãi suất:** `2% mỗi 1 phút`\n"
+                        f"• **Thời hạn:** `30 Phút` (Quá hạn phạt 4%/phút)\n\n"
+                        f"💰 Tiền đã cộng vào ví! Gõ `/trano` để thanh toán nợ.",
+            color=discord.Color.gold()
+        )
+        await interaction.response.send_message(embed=embed)
 
     @commands.command(name="trano", aliases=["payloan", "traloi"])
     async def cmd_trano(self, ctx, amount: str = "all"):
@@ -274,28 +370,62 @@ class Economy(commands.Cog):
             await ctx.send(f"❌ Ví không đủ tiền! Cần **{pay_amt:,}** {COIN} (Ví hiện có: **{wallet:,}** {COIN})")
             return
 
-        # Xử lý trả nợ
         if pay_amt >= total_debt:
-            # Trả sạch toàn bộ nợ
             actual_paid = total_debt
             u["wallet"] -= actual_paid
-            add_to_treasury(data, interest)  # Tiền lãi nộp vào Kho Bạc Bot
+            add_to_treasury(data, interest)
             del data["loans"][uid]
             save_db(data)
             await ctx.send(f"🎉 **CHÚC MỪNG BẠN ĐÃ TRẢ SẠCH NỢ!** Đã thanh toán **{actual_paid:,}** {COIN} (Gốc: {principal:,} + Lãi: {interest:,})!")
         else:
-            # Trả một phần nợ
             u["wallet"] -= pay_amt
             new_debt = total_debt - pay_amt
-            # Cập nhật lại gốc và timestamp
             data["loans"][uid]["principal"] = new_debt
             data["loans"][uid]["timestamp"] = time.time()
             save_db(data)
             await ctx.send(f"✅ Đã trả bớt **{pay_amt:,}** {COIN}! Số nợ còn lại: **{new_debt:,}** {COIN}.")
 
+    @app_commands.command(name="trano", description="Trả nợ ngân hàng (gốc + lãi)")
+    async def slash_trano(self, interaction: discord.Interaction, so_tien: Optional[int] = None):
+        data = load_db()
+        uid = str(interaction.user.id)
+        loans = data.get("loans", {})
+
+        if uid not in loans or loans[uid].get("principal", 0) <= 0:
+            await interaction.response.send_message("🎉 Bạn không có khoản nợ ngân hàng nào cần trả!", ephemeral=True)
+            return
+
+        total_debt, principal, interest, is_overdue = calculate_loan_debt(data, interaction.user.id)
+        u = get_user(data, interaction.user.id)
+        wallet = u.get("wallet", 0)
+
+        pay_amt = total_debt if so_tien is None else so_tien
+
+        if pay_amt <= 0:
+            await interaction.response.send_message("❌ Số tiền trả phải lớn hơn 0!", ephemeral=True)
+            return
+
+        if wallet < pay_amt:
+            await interaction.response.send_message(f"❌ Ví không đủ tiền! Cần **{pay_amt:,}** {COIN} (Ví hiện có: **{wallet:,}** {COIN})", ephemeral=True)
+            return
+
+        if pay_amt >= total_debt:
+            actual_paid = total_debt
+            u["wallet"] -= actual_paid
+            add_to_treasury(data, interest)
+            del data["loans"][uid]
+            save_db(data)
+            await interaction.response.send_message(f"🎉 **BẠN ĐÃ TRẢ SẠCH NỢ!** Đã thanh toán **{actual_paid:,}** {COIN} (Gốc: {principal:,} + Lãi: {interest:,})!")
+        else:
+            u["wallet"] -= pay_amt
+            new_debt = total_debt - pay_amt
+            data["loans"][uid]["principal"] = new_debt
+            data["loans"][uid]["timestamp"] = time.time()
+            save_db(data)
+            await interaction.response.send_message(f"✅ Đã trả bớt **{pay_amt:,}** {COIN}! Số nợ còn lại: **{new_debt:,}** {COIN}.")
+
     @commands.command(name="topno", aliases=["banno", "chuachom"])
     async def cmd_topno(self, ctx):
-        """Xem danh sách Top 10 Chúa Chổm nợ ngân hàng nhiều nhất"""
         data = load_db()
         loans = data.get("loans", {})
         if not loans:
@@ -325,6 +455,36 @@ class Economy(commands.Cog):
         embed.description = desc
         embed.set_footer(text="Lãi suất 2%/phút • Quá hạn 30p phạt 4%/phút • Gõ !trano all để trả nợ!")
         await ctx.send(embed=embed)
+
+    @app_commands.command(name="topno", description="Xem Bảng Phong Thần Top 10 con nợ ngân hàng")
+    async def slash_topno(self, interaction: discord.Interaction):
+        data = load_db()
+        loans = data.get("loans", {})
+        if not loans:
+            await interaction.response.send_message("🎉 Hiện tại server sạch bóng quân nợ ngân hàng!")
+            return
+
+        debt_list = []
+        for uid in loans:
+            tot, princ, inter, overdue = calculate_loan_debt(data, uid)
+            if tot > 0:
+                debt_list.append((uid, tot, princ, inter, overdue))
+
+        debt_list.sort(key=lambda x: x[1], reverse=True)
+
+        embed = discord.Embed(
+            title="💀 BẢNG PHONG THẦN CHÚA CHỔM (TOP NỢ NGÂN HÀNG) 🏦",
+            color=discord.Color.dark_red()
+        )
+        medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+        desc = ""
+        for i, (uid, tot, princ, inter, overdue) in enumerate(debt_list[:10]):
+            medal = medals[i] if i < len(medals) else f"#{i+1}"
+            tag = " 🚨 **[QUÁ HẠN]**" if overdue else ""
+            desc += f"{medal} <@{uid}> — **{tot:,}** {COIN} *(Gốc: {princ:,} + Lãi: {inter:,})*{tag}\n"
+
+        embed.description = desc
+        await interaction.response.send_message(embed=embed)
 
     # ================= 4. SỔ ĐÒI NỢ THÀNH VIÊN P2P =================
     @commands.command(name="doino", aliases=["doi"])
@@ -366,9 +526,47 @@ class Economy(commands.Cog):
         view = DebtView(debtor=con_no, creditor=ctx.author, amount=so_tien, reason=ly_do, debt_id=debt_id)
         await ctx.send(content=con_no.mention, embed=embed, view=view)
 
+    @app_commands.command(name="doino", description="Lập sổ đòi nợ thành viên khác kèm 3 nút bấm tương tác")
+    async def slash_doino(self, interaction: discord.Interaction, con_no: discord.Member, so_tien: int, ly_do: str = "Không lý do"):
+        if con_no.id == interaction.user.id or con_no.bot:
+            await interaction.response.send_message("❌ Không thể tự đòi nợ mình / đòi nợ bot!", ephemeral=True)
+            return
+        if so_tien <= 0:
+            await interaction.response.send_message("❌ Số tiền đòi nợ phải lớn hơn 0!", ephemeral=True)
+            return
+
+        debt_id = str(time.time())
+        data = load_db()
+        if "debts" not in data:
+            data["debts"] = {}
+
+        debtor_id = str(con_no.id)
+        if debtor_id not in data["debts"]:
+            data["debts"][debtor_id] = []
+
+        data["debts"][debtor_id].append({
+            "id": debt_id,
+            "creditor_id": interaction.user.id,
+            "amount": so_tien,
+            "reason": ly_do,
+            "timestamp": time.time()
+        })
+        save_db(data)
+
+        embed = discord.Embed(
+            title="⚠️ CẢNH BÁO ĐÒI NỢ DÂN GIAN ⚠️",
+            description=f"Alo {con_no.mention}, mày nợ **{interaction.user.mention}** số tiền **{so_tien:,}** {COIN} tiền **{ly_do}** bao lâu rồi? Mau trả tiền đi!",
+            color=discord.Color.red()
+        )
+        embed.add_field(name="Chủ nợ", value=interaction.user.mention, inline=True)
+        embed.add_field(name="Số tiền", value=f"**{so_tien:,}** {COIN}", inline=True)
+        embed.add_field(name="Lý do", value=ly_do, inline=False)
+
+        view = DebtView(debtor=con_no, creditor=interaction.user, amount=so_tien, reason=ly_do, debt_id=debt_id)
+        await interaction.response.send_message(content=con_no.mention, embed=embed, view=view)
+
     @commands.command(name="sono", aliases=["bangno", "danhsachno"])
     async def cmd_sono(self, ctx):
-        """Xem Bảng Phong Thần Nợ Nần P2P giữa các thành viên"""
         data = load_db()
         debts = data.get("debts", {})
         if not debts:
@@ -395,6 +593,33 @@ class Economy(commands.Cog):
         embed.description = desc
         embed.set_footer(text="Dùng !doino @user <tiền> <lý do> để lập sổ đòi nợ!")
         await ctx.send(embed=embed)
+
+    @app_commands.command(name="sono", description="Xem Bảng Phong Thần Nợ Dai giữa các thành viên")
+    async def slash_sono(self, interaction: discord.Interaction):
+        data = load_db()
+        debts = data.get("debts", {})
+        if not debts:
+            await interaction.response.send_message("🎉 Hiện tại server thái bình, không ai nợ tiền ai!")
+            return
+
+        leaderboard = []
+        for debtor_id, debt_list in debts.items():
+            total = sum(d.get("amount", 0) for d in debt_list)
+            if total > 0:
+                leaderboard.append((debtor_id, total, len(debt_list)))
+
+        leaderboard.sort(key=lambda x: x[1], reverse=True)
+
+        embed = discord.Embed(
+            title="🏆 BẢNG PHONG THẦN NỢ DAI MẶT DÀY P2P 💸",
+            color=discord.Color.gold()
+        )
+        desc = ""
+        for i, (debtor_id, total, count) in enumerate(leaderboard[:10], 1):
+            desc += f"**#{i}** <@{debtor_id}> — Tổng nợ: **{total:,}** {COIN} *({count} khoản nợ)*\n"
+
+        embed.description = desc
+        await interaction.response.send_message(embed=embed)
 
     # ================= 5. ĐIỂM DANH DAILY =================
     @commands.command(name="daily", aliases=["diemdanh"])
@@ -434,6 +659,43 @@ class Economy(commands.Cog):
         )
         await ctx.send(embed=embed)
 
+    @app_commands.command(name="daily", description="Điểm danh nhận tiền mỗi ngày + chuỗi streak")
+    async def slash_daily(self, interaction: discord.Interaction):
+        data = load_db()
+        apply_bank_tax(data)
+        u = get_user(data, interaction.user.id)
+        now = time.time()
+        last = u.get("last_daily", 0)
+        streak = u.get("streak", 0)
+
+        diff = now - last
+        if diff < 86400:
+            rem = int(86400 - diff)
+            h = rem // 3600
+            m = (rem % 3600) // 60
+            await interaction.response.send_message(f"⏳ Bạn đã điểm danh hôm nay rồi! Quay lại sau **{h}h {m}p** nữa nhé.", ephemeral=True)
+            return
+
+        streak = streak + 1 if diff < 172800 else 1
+        base = random.randint(500, 1000)
+        bonus = min(streak * 50, 500)
+        total = base + bonus
+
+        u["last_daily"] = now
+        u["streak"] = streak
+        u["wallet"] = u.get("wallet", 0) + total
+        save_db(data)
+
+        embed = discord.Embed(
+            title="🎁 PHẦN THƯỞNG ĐIỂM DANH HẰNG NGÀY",
+            description=f"🎉 Bạn nhận được **+{total:,}** {COIN}!\n"
+                        f"• Thưởng gốc: **{base:,}** {COIN}\n"
+                        f"• Thưởng chuỗi (Streak {streak} ngày): **+{bonus:,}** {COIN}\n"
+                        f"• Số dư ví: **{u['wallet']:,}** {COIN}",
+            color=discord.Color.gold()
+        )
+        await interaction.response.send_message(embed=embed)
+
     # ================= 6. ĐI LÀM WORK =================
     @commands.command(name="work", aliases=["lam"])
     async def cmd_work(self, ctx):
@@ -461,6 +723,31 @@ class Economy(commands.Cog):
         save_db(data)
         await ctx.send(f"💼 Bạn vừa làm **{job}** và nhận được **+{wage:,}** {COIN}! (Ví: **{u['wallet']:,}** {COIN})")
 
+    @app_commands.command(name="work", description="Đi làm việc kiếm lương mỗi 30 phút")
+    async def slash_work(self, interaction: discord.Interaction):
+        data = load_db()
+        apply_bank_tax(data)
+        u = get_user(data, interaction.user.id)
+        now = time.time()
+        last = u.get("last_work", 0)
+
+        if now - last < 1800:
+            rem = int(1800 - (now - last))
+            await interaction.response.send_message(f"😴 Bạn vừa làm việc mệt rồi, nghỉ ngơi **{rem // 60}p {rem % 60}s** nữa nhé!", ephemeral=True)
+            return
+
+        jobs = [
+            ("Lập trình bot Discord", random.randint(300, 600)),
+            ("Phục vụ quán Cà Phê Mèo Neko", random.randint(250, 500)),
+            ("Giao đồ ăn nhanh buổi tối", random.randint(200, 450)),
+            ("Bán trà sữa trân châu đường đen", random.randint(220, 480))
+        ]
+        job, wage = random.choice(jobs)
+        u["last_work"] = now
+        u["wallet"] = u.get("wallet", 0) + wage
+        save_db(data)
+        await interaction.response.send_message(f"💼 Bạn vừa làm **{job}** và nhận được **+{wage:,}** {COIN}! (Ví: **{u['wallet']:,}** {COIN})")
+
     # ================= 7. ĂN XIN BEG =================
     @commands.command(name="beg", aliases=["anxin"])
     async def cmd_beg(self, ctx):
@@ -484,6 +771,28 @@ class Economy(commands.Cog):
         else:
             await ctx.send("💀 Bạn chìa nón ra nhưng bị bảo vệ đuổi chạy té khói!")
 
+    @app_commands.command(name="beg", description="Vác nón đi ăn xin tiền lẻ mỗi 10 phút")
+    async def slash_beg(self, interaction: discord.Interaction):
+        data = load_db()
+        apply_bank_tax(data)
+        u = get_user(data, interaction.user.id)
+        now = time.time()
+        last = u.get("last_beg", 0)
+
+        if now - last < 600:
+            rem = int(600 - (now - last))
+            await interaction.response.send_message(f"⏳ Vừa xin xong mỏi mồm chưa? Đợi **{rem // 60}p {rem % 60}s** nữa nhé!", ephemeral=True)
+            return
+
+        u["last_beg"] = now
+        if random.random() < 0.75:
+            amt = random.randint(50, 200)
+            u["wallet"] = u.get("wallet", 0) + amt
+            save_db(data)
+            await interaction.response.send_message(f"🥺 Bạn được người tốt bố thí cho **+{amt:,}** {COIN}! (Ví: **{u['wallet']:,}** {COIN})")
+        else:
+            await interaction.response.send_message("💀 Bạn chìa nón ra nhưng bị bảo vệ đuổi chạy té khói!")
+
     # ================= 8. CƯỚP TIỀN ROB =================
     @commands.command(name="rob", aliases=["cuop"])
     async def cmd_rob(self, ctx, target: discord.Member):
@@ -500,10 +809,6 @@ class Economy(commands.Cog):
         if now - robber.get("last_rob", 0) < 3600:
             rem = int(3600 - (now - robber.get("last_rob", 0)))
             await ctx.send(f"🚔 Cảnh sát đang tuần tra, đợi **{rem // 60} phút** nữa nhé!")
-            return
-
-        if victim.get("shield_until", 0) > now:
-            await ctx.send(f"🛡️ {target.mention} đang được bảo vệ bởi Khiên Thần Thánh! Không thể cướp!")
             return
 
         v_wallet = victim.get("wallet", 0)
@@ -530,6 +835,47 @@ class Economy(commands.Cog):
             save_db(data)
             await ctx.send(f"🚨 Bị bắt quả tang tại trận! Bạn bị đền **-{fine:,}** {COIN} cho {target.mention}!")
 
+    @app_commands.command(name="rob", description="Móc túi trộm tiền từ ví của người khác")
+    async def slash_rob(self, interaction: discord.Interaction, nan_nhan: discord.Member):
+        if nan_nhan.id == interaction.user.id or nan_nhan.bot:
+            await interaction.response.send_message("❌ Không thể tự cướp mình / cướp bot!", ephemeral=True)
+            return
+
+        data = load_db()
+        apply_bank_tax(data)
+        robber = get_user(data, interaction.user.id)
+        victim = get_user(data, nan_nhan.id)
+        now = time.time()
+
+        if now - robber.get("last_rob", 0) < 3600:
+            rem = int(3600 - (now - robber.get("last_rob", 0)))
+            await interaction.response.send_message(f"🚔 Cảnh sát đang tuần tra, đợi **{rem // 60} phút** nữa nhé!", ephemeral=True)
+            return
+
+        v_wallet = victim.get("wallet", 0)
+        r_wallet = robber.get("wallet", 0)
+
+        if r_wallet < 500:
+            await interaction.response.send_message("❌ Bạn cần ít nhất **500** tiền trong ví để nộp phạt!", ephemeral=True)
+            return
+        if v_wallet < 500:
+            await interaction.response.send_message(f"❌ Ví của {nan_nhan.mention} dưới 500 tiền, tha cho nó đi!", ephemeral=True)
+            return
+
+        robber["last_rob"] = now
+        if random.random() < 0.5:
+            stolen = max(100, int(v_wallet * random.uniform(0.15, 0.35)))
+            victim["wallet"] -= stolen
+            robber["wallet"] += stolen
+            save_db(data)
+            await interaction.response.send_message(f"🥷 Thành công! Bạn vừa móc trộm được **+{stolen:,}** {COIN} từ ví của {nan_nhan.mention}!")
+        else:
+            fine = min(r_wallet, random.randint(300, 600))
+            robber["wallet"] -= fine
+            victim["wallet"] += fine
+            save_db(data)
+            await interaction.response.send_message(f"🚨 Bị bắt quả tang tại trận! Bạn bị đền **-{fine:,}** {COIN} cho {nan_nhan.mention}!")
+
     # ================= 9. CHUYỂN TIỀN PAY (THUẾ 20%) =================
     @commands.command(name="pay", aliases=["give", "chuyen"])
     async def cmd_pay(self, ctx, target: discord.Member, amount: int):
@@ -546,7 +892,6 @@ class Economy(commands.Cog):
             await ctx.send(f"❌ Bạn không đủ tiền trong ví! (Ví: **{sender.get('wallet', 0):,}** {COIN})")
             return
 
-        # Thuế chiết khấu giao dịch 20%
         tax = int(amount * 0.20)
         net_received = amount - tax
 
@@ -560,6 +905,36 @@ class Economy(commands.Cog):
             f"• {ctx.author.mention} chuyển: **{amount:,}** {COIN}\n"
             f"• Thuế giao dịch (20% nộp Kho Bạc): **-{tax:,}** {COIN}\n"
             f"• {target.mention} thực nhận: **+{net_received:,}** {COIN}!"
+        )
+
+    @app_commands.command(name="pay", description="Chuyển tiền cho thành viên khác (Phí chiết khấu 20%)")
+    async def slash_pay(self, interaction: discord.Interaction, nguoi_nhan: discord.Member, so_tien: int):
+        if nguoi_nhan.id == interaction.user.id or nguoi_nhan.bot or so_tien <= 0:
+            await interaction.response.send_message("❌ Thông tin chuyển khoản không hợp lệ!", ephemeral=True)
+            return
+
+        data = load_db()
+        apply_bank_tax(data)
+        sender = get_user(data, interaction.user.id)
+        receiver = get_user(data, nguoi_nhan.id)
+
+        if sender.get("wallet", 0) < so_tien:
+            await interaction.response.send_message(f"❌ Bạn không đủ tiền trong ví! (Ví: **{sender.get('wallet', 0):,}** {COIN})", ephemeral=True)
+            return
+
+        tax = int(so_tien * 0.20)
+        net_received = so_tien - tax
+
+        sender["wallet"] -= so_tien
+        receiver["wallet"] = receiver.get("wallet", 0) + net_received
+        add_to_treasury(data, tax)
+        save_db(data)
+
+        await interaction.response.send_message(
+            f"💸 **CHUYỂN KHOẢN THÀNH CÔNG!**\n"
+            f"• {interaction.user.mention} chuyển: **{so_tien:,}** {COIN}\n"
+            f"• Thuế giao dịch (20% nộp Kho Bạc): **-{tax:,}** {COIN}\n"
+            f"• {nguoi_nhan.mention} thực nhận: **+{net_received:,}** {COIN}!"
         )
 
     # ================= 10. TOP ĐẠI GIA =================
@@ -582,6 +957,26 @@ class Economy(commands.Cog):
             desc += f"{medal} <@{u_id}> — **{tot:,}** {COIN}\n"
         embed.description = desc
         await ctx.send(embed=embed)
+
+    @app_commands.command(name="top", description="Xem Bảng Phong Thần Top 10 Đại Gia giàu nhất")
+    async def slash_top(self, interaction: discord.Interaction):
+        data = load_db()
+        apply_bank_tax(data)
+        users = data.get("users", {})
+        if not users:
+            await interaction.response.send_message("Chưa có dữ liệu người chơi.")
+            return
+
+        sorted_users = sorted(users.items(), key=lambda x: x[1].get("wallet", 0) + x[1].get("bank", 0), reverse=True)
+        embed = discord.Embed(title="🏆 BẢNG PHONG THẦN ĐẠI GIA NEKO 🌟", color=discord.Color.gold())
+        desc = ""
+        medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+        for i, (u_id, u_info) in enumerate(sorted_users[:10]):
+            tot = u_info.get("wallet", 0) + u_info.get("bank", 0)
+            medal = medals[i] if i < len(medals) else f"#{i+1}"
+            desc += f"{medal} <@{u_id}> — **{tot:,}** {COIN}\n"
+        embed.description = desc
+        await interaction.response.send_message(embed=embed)
 
 
 async def setup(bot):

@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import discord
 from discord.ext import commands
+from discord import app_commands
 from typing import Optional
 from cogs.database import load_db, save_db, get_user, calculate_loan_debt
 
@@ -58,68 +59,63 @@ class Admin(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    # ================= 1. CẨM NANG THÀNH VIÊN THƯỜNG (ẨN HẾT LỆNH ADMIN) =================
-    @commands.command(name="help", aliases=["hdsd", "nekohelp"])
-    async def cmd_help(self, ctx):
+    def _get_help_embed(self):
         embed = discord.Embed(
             title="🐱 CẨM NANG HƯỚNG DẪN NEKO BOT 🌸",
-            description="Chào mừng bạn đến với **Neko Bot** — Kinh Tế, Vay Vốn Ngân Hàng, Sòng Bạc & Lì Xì Server!\n*Tiền tố lệnh:* `!` hoặc `n!`",
+            description="Chào mừng bạn đến với **Neko Bot** — Kinh Tế, Vay Vốn Ngân Hàng, Sòng Bạc & Lì Xì Server!\n*Tiền tố lệnh:* `!` hoặc `n!` hoặc dùng `/` (Slash Commands)",
             color=discord.Color.from_rgb(255, 105, 180)
         )
         embed.set_thumbnail(url="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f431.png")
 
         embed.add_field(
             name="🪙 1. Kinh Tế & Ngân Hàng & Vay Vốn",
-            value="• `!bal` / `!vi` : Xem ví tiền, bank & nợ vay\n"
-                  "• `!dep <all/tiền>` : Gửi tiền vào ngân hàng\n"
-                  "• `!with <all/tiền>` : Rút tiền ra ví\n"
-                  "• `!vay <tiền>` : Vay ngân hàng (Tối đa 30M - 100M, lãi 2%/phút)\n"
-                  "• `!trano <all/tiền>` : Trả nợ ngân hàng\n"
-                  "• `!topno` : Bảng phong thần Chúa Chổm ngập nợ\n"
-                  "• `!daily` : Điểm danh nhận tiền hằng ngày + streak\n"
-                  "• `!work` : Đi làm kiếm lương mỗi 30 phút\n"
-                  "• `!beg` : Ăn xin tiền lẻ\n"
-                  "• `!rob @user` : Trộm ví tiền người khác\n"
-                  "• `!pay @user <tiền>` : Chuyển khoản (Phí chiết khấu 20%)\n"
-                  "• `!top` : Bảng xếp hạng đại gia",
+            value="• `!bal` / `/bal` : Xem ví tiền, bank & nợ vay\n"
+                  "• `!dep <tiền>` / `/dep` : Gửi tiền vào ngân hàng\n"
+                  "• `!with <tiền>` / `/with` : Rút tiền ra ví\n"
+                  "• `!vay <tiền>` / `/vay` : Vay ngân hàng (Tối đa 30M - 100M, lãi 2%/phút)\n"
+                  "• `!trano <tiền>` / `/trano` : Trả nợ ngân hàng\n"
+                  "• `!topno` / `/topno` : Bảng phong thần Chúa Chổm ngập nợ\n"
+                  "• `!daily` / `/daily` : Điểm danh nhận tiền hằng ngày + streak\n"
+                  "• `!work` / `/work` : Đi làm kiếm lương mỗi 30 phút\n"
+                  "• `!beg` / `/beg` : Ăn xin tiền lẻ\n"
+                  "• `!rob @user` / `/rob` : Trộm ví tiền người khác\n"
+                  "• `!pay @user <tiền>` / `/pay` : Chuyển khoản (Phí chiết khấu 20%)\n"
+                  "• `!top` / `/top` : Bảng xếp hạng đại gia",
             inline=False
         )
 
         embed.add_field(
             name="💸 2. Sổ Đòi Nợ Dân Gian",
-            value="• `!doino @user <tiền> <lý do>` : Lập sổ đòi nợ kèm nút bấm đòi tiền\n"
-                  "• `!sono` / `!bangno` : Bảng phong thần nợ dai giữa các thành viên",
+            value="• `!doino @user <tiền> <lý do>` / `/doino` : Lập sổ đòi nợ kèm nút bấm đòi tiền\n"
+                  "• `!sono` / `/sono` : Bảng phong thần nợ dai giữa các thành viên",
             inline=False
         )
 
         embed.add_field(
             name="🎰 3. Sòng Bạc Mini (Casino)",
-            value="• `!tx <tiền> <t/x>` : Đổ xúc xắc Tài Xỉu (Bão nhà cái ăn sạch)\n"
-                  "• `!bj <tiền>` : Đánh bài Xì Dách Blackjack (Nút bấm 🃏 Rút/Dằn)\n"
-                  "• `!cf <tiền> <s/n>` : Tung đồng xu may rủi\n"
-                  "• `!slot <tiền>` : Quay hũ máy xèng hoa quả trúng Jackpot\n"
-                  "• `!baucua <tiền> <con>` : Bầu cua tôm cá (bau, cua, tom, ca, ga, nai)\n"
+            value="• `!tx <tiền> <t/x>` / `/taixiu` : Đổ xúc xắc Tài Xỉu (Bão nhà cái ăn sạch)\n"
+                  "• `!bj <tiền>` / `/blackjack` : Đánh bài Xì Dách Blackjack (Nút bấm 🃏 Rút/Dằn)\n"
+                  "• `!cf <tiền> <s/n>` / `/coinflip` : Tung đồng xu may rủi Sấp/Ngửa\n"
+                  "• `!slot <tiền>` / `/slots` : Quay hũ máy xèng hoa quả trúng Jackpot\n"
+                  "• `!baucua <tiền> <con>` / `/baucua` : Bầu cua tôm cá (bau, cua, tom, ca, ga, nai)\n"
                   "*(Tất cả ván thắng cờ bạc chịu 10% thuế nộp Kho Bạc Bot)*",
             inline=False
         )
 
         embed.add_field(
             name="🧧 4. Đấu Solo PvP & Lì Xì",
-            value="• `!rps @user <cược>` : Kéo búa bao solo 1v1\n"
-                  "• `!dice @user <cược>` : Đổ xúc xắc solo 1v1\n"
-                  "• `!lixi <tiền> <người> [lời chúc]` : Phát bao lì xì cho cả làng giật\n"
-                  "• `!lixirieng @user <tiền> [lời chúc]` : Gửi phong bao đỏ riêng cho 1 người\n"
+            value="• `!rps @user <cược>` / `/rps` : Kéo búa bao solo 1v1\n"
+                  "• `!dice @user <cược>` / `/dice` : Đổ xúc xắc solo 1v1\n"
+                  "• `!lixi <tiền> <người>` / `/lixi` : Phát bao lì xì cho cả làng giật\n"
+                  "• `!lixirieng @user <tiền>` / `/lixirieng` : Gửi phong bao đỏ riêng cho 1 người\n"
                   "• `!txopen <giây>` : Mở bàn Tài Xỉu cho cả server cùng đặt cược",
             inline=False
         )
 
         embed.set_footer(text="Neko Bot • Hoạt động 24/7 không giới hạn thành viên!")
-        await ctx.send(embed=embed)
+        return embed
 
-    # ================= 2. LỆNH TỔNG HỢP ADMIN DUY NHẤT: !hien =================
-    @commands.command(name="hien", aliases=["adminhelp", "secret", "lenhan"])
-    @commands.has_permissions(administrator=True)
-    async def cmd_hien(self, ctx):
+    def _get_hien_embed(self):
         embed = discord.Embed(
             title="👑 BẢNG TRA CỨU QUYỀN LỰC VIP DÀNH CHO ADMIN 🔒",
             description="Dưới đây là toàn bộ công cụ quản trị, lệnh ẩn cheat và kiểm soát ngân khố của bạn:",
@@ -158,7 +154,33 @@ class Admin(commands.Cog):
         )
 
         embed.set_footer(text="Bảo mật tuyệt đối • Chỉ hiển thị cho Admin!")
+        return embed
+
+    # ================= 1. CẨM NANG THÀNH VIÊN THƯỜNG =================
+    @commands.command(name="help", aliases=["hdsd", "nekohelp"])
+    async def cmd_help(self, ctx):
+        embed = self._get_help_embed()
         await ctx.send(embed=embed)
+
+    @app_commands.command(name="hdsd", description="Cẩm nang hướng dẫn sử dụng Neko Bot")
+    async def slash_hdsd(self, interaction: discord.Interaction):
+        embed = self._get_help_embed()
+        await interaction.response.send_message(embed=embed)
+
+    # ================= 2. LỆNH TỔNG HỢP ADMIN DUY NHẤT: !hien =================
+    @commands.command(name="hien", aliases=["adminhelp", "secret", "lenhan"])
+    @commands.has_permissions(administrator=True)
+    async def cmd_hien(self, ctx):
+        embed = self._get_hien_embed()
+        await ctx.send(embed=embed)
+
+    @app_commands.command(name="hien", description="[ADMIN] Bảng tra cứu quyền lực và lệnh ẩn quản trị bot")
+    async def slash_hien(self, interaction: discord.Interaction):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("❌ Lệnh này chỉ dành cho Admin!", ephemeral=True)
+            return
+        embed = self._get_hien_embed()
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     # ================= 3. LỆNH ẨN NHÀ CÁI !nhacai =================
     @commands.command(name="nhacai", aliases=["matrix", "godmode"])
@@ -172,6 +194,19 @@ class Admin(commands.Cog):
         view = NhaCaiView()
         await ctx.send(embed=embed, view=view)
 
+    @app_commands.command(name="nhacai", description="[ADMIN] Mở Bảng Điều Khiển Nhà Cái Ẩn")
+    async def slash_nhacai(self, interaction: discord.Interaction):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("❌ Lệnh này chỉ dành cho Admin!", ephemeral=True)
+            return
+        embed = discord.Embed(
+            title="🕵️‍♂️ BẢNG ĐIỀU KHIỂN NHÀ CÁI ẨN 🎰",
+            description="Chọn chế độ tỷ lệ thắng toàn Server hoặc kiểm tra danh sách thành viên bị can thiệp:",
+            color=discord.Color.dark_purple()
+        )
+        view = NhaCaiView()
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
     @commands.command(name="setwin")
     @commands.has_permissions(administrator=True)
     async def cmd_setwin(self, ctx, target: discord.Member, rate: int):
@@ -184,6 +219,21 @@ class Admin(commands.Cog):
 
         tag = "👑 [HACK THẮNG 100%]" if rate == 100 else ("💀 [ÉP THUA 0%]" if rate == 0 else f"[{rate}%]")
         await ctx.send(f"✅ Đã thiết lập tỷ lệ thắng của {target.mention} thành **{rate}%** {tag}!")
+
+    @app_commands.command(name="setwin", description="[ADMIN] Ép tỷ lệ thắng cá nhân cho thành viên")
+    async def slash_setwin(self, interaction: discord.Interaction, target: discord.Member, ty_le: int):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("❌ Lệnh này chỉ dành cho Admin!", ephemeral=True)
+            return
+        rate = max(0, min(ty_le, 100))
+        data = load_db()
+        if "cheat_config" not in data:
+            data["cheat_config"] = {"global_mode": "default", "user_overrides": {}}
+        data["cheat_config"]["user_overrides"][str(target.id)] = rate
+        save_db(data)
+
+        tag = "👑 [HACK THẮNG 100%]" if rate == 100 else ("💀 [ÉP THUA 0%]" if rate == 0 else f"[{rate}%]")
+        await interaction.response.send_message(f"✅ Đã thiết lập tỷ lệ thắng của {target.mention} thành **{rate}%** {tag}!", ephemeral=True)
 
     @commands.command(name="resetwin")
     @commands.has_permissions(administrator=True)

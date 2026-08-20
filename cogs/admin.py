@@ -3,7 +3,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 from typing import Optional
-from cogs.database import load_db, save_db, get_user, calculate_loan_debt, calculate_win_rate
+from cogs.database import load_db, save_db, get_user, calculate_loan_debt, calculate_win_rate, parse_amount
 
 COIN = "💵"
 
@@ -186,11 +186,13 @@ class Admin(commands.Cog):
 
         # Bảng mô phỏng tỷ lệ thắng theo mức cược thực tế
         bet_simulations = [
-            (10000, "Tiền lẻ (≤ 50k)"),
-            (200000, "Vừa phải (50k - 500k)"),
-            (2000000, "Đại gia (500k - 5M)"),
-            (10000000, "Khủng (5M - 20M)"),
-            (50000000, "Tất tay (> 20M)")
+            (100_000, "Cược nhỏ (≤ 500k)"),
+            (10_000_000, "Vừa phải (500k - 50M)"),
+            (500_000_000, "Đại gia (50M - 1B)"),
+            (5_000_000_000, "Khủng (1B - 10B)"),
+            (50_000_000_000, "Tài phiệt (10B - 100B)"),
+            (500_000_000_000, "Siêu cá mập (100B - 1,000B)"),
+            (2_000_000_000_000, "Tất tay (> 1 Ngàn Tỷ)")
         ]
 
         table_lines = ""
@@ -473,21 +475,13 @@ class Admin(commands.Cog):
 
     @commands.command(name="rutkhobac", aliases=["withdraw_treasury"])
     @commands.has_permissions(administrator=True)
-    async def cmd_rutkhobac(self, ctx, amount: str):
+    async def cmd_rutkhobac(self, ctx, amount: str = "all"):
         data = load_db()
         balance = data.get("treasury", {}).get("balance", 0)
 
-        if amount.lower() == "all":
-            withdraw_amt = balance
-        else:
-            try:
-                withdraw_amt = int(amount)
-            except ValueError:
-                await ctx.send("❌ Nhập số tiền hợp lệ hoặc gõ `!rutkhobac all`!")
-                return
-
+        withdraw_amt = parse_amount(amount, balance)
         if withdraw_amt <= 0 or withdraw_amt > balance:
-            await ctx.send(f"❌ Kho Bạc không đủ tiền! Hiện có: **{balance:,}** {COIN}")
+            await ctx.send(f"❌ Kho Bạc không đủ tiền! Cần: **{withdraw_amt:,}** (Hiện có: **{balance:,}** {COIN})")
             return
 
         data["treasury"]["balance"] -= withdraw_amt
@@ -499,39 +493,81 @@ class Admin(commands.Cog):
 
     @commands.command(name="buffme")
     @commands.has_permissions(administrator=True)
-    async def cmd_buffme(self, ctx, amount: int = 10000000):
+    async def cmd_buffme(self, ctx, amount: str = "10000000"):
+        val = parse_amount(amount, 10000000)
+        if val <= 0:
+            await ctx.send("❌ Số tiền buff không hợp lệ! (Ví dụ: `!buffme 10b`, `!buffme 500b`)")
+            return
         data = load_db()
         u = get_user(data, ctx.author.id)
-        u["wallet"] = u.get("wallet", 0) + amount
+        u["wallet"] = u.get("wallet", 0) + val
         save_db(data)
-        await ctx.send(f"👑 Admin {ctx.author.mention} đã tự bơm **+{amount:,}** {COIN}! (Ví: **{u['wallet']:,}** {COIN})")
+        await ctx.send(f"👑 Admin {ctx.author.mention} đã tự bơm **+{val:,}** {COIN}! (Ví: **{u['wallet']:,}** {COIN})")
 
     @commands.command(name="setmoney")
     @commands.has_permissions(administrator=True)
-    async def cmd_setmoney(self, ctx, target: discord.Member, amount: int):
+    async def cmd_setmoney(self, ctx, target: discord.Member, amount: str):
+        val = parse_amount(amount, 0)
+        if val < 0:
+            await ctx.send("❌ Số tiền không hợp lệ!")
+            return
         data = load_db()
         u = get_user(data, target.id)
-        u["wallet"] = max(0, amount)
+        u["wallet"] = val
         save_db(data)
-        await ctx.send(f"👑 Đã đặt số dư ví của {target.mention} thành **{amount:,}** {COIN}!")
+        await ctx.send(f"👑 Đã đặt số dư ví của {target.mention} thành **{val:,}** {COIN}!")
 
     @commands.command(name="addmoney")
     @commands.has_permissions(administrator=True)
-    async def cmd_addmoney(self, ctx, target: discord.Member, amount: int):
+    async def cmd_addmoney(self, ctx, target: discord.Member, amount: str):
+        val = parse_amount(amount, 0)
+        if val <= 0:
+            await ctx.send("❌ Số tiền không hợp lệ!")
+            return
         data = load_db()
         u = get_user(data, target.id)
-        u["wallet"] = max(0, u.get("wallet", 0) + amount)
+        u["wallet"] = max(0, u.get("wallet", 0) + val)
         save_db(data)
-        await ctx.send(f"✨ Đã cộng **+{amount:,}** {COIN} cho {target.mention}! (Ví: **{u['wallet']:,}** {COIN})")
+        await ctx.send(f"✨ Đã cộng **+{val:,}** {COIN} cho {target.mention}! (Ví: **{u['wallet']:,}** {COIN})")
 
     @commands.command(name="trutien")
     @commands.has_permissions(administrator=True)
-    async def cmd_trutien(self, ctx, target: discord.Member, amount: int):
+    async def cmd_trutien(self, ctx, target: discord.Member, amount: str):
+        val = parse_amount(amount, 0)
+        if val <= 0:
+            await ctx.send("❌ Số tiền không hợp lệ!")
+            return
         data = load_db()
         u = get_user(data, target.id)
-        u["wallet"] = max(0, u.get("wallet", 0) - amount)
+        u["wallet"] = max(0, u.get("wallet", 0) - val)
         save_db(data)
-        await ctx.send(f"⚠️ Đã trừ **-{amount:,}** {COIN} của {target.mention}! (Ví còn: **{u['wallet']:,}** {COIN})")
+        await ctx.send(f"⚠️ Đã trừ **-{val:,}** {COIN} của {target.mention}! (Ví còn: **{u['wallet']:,}** {COIN})")
+
+    @commands.command(name="setbank")
+    @commands.has_permissions(administrator=True)
+    async def cmd_setbank(self, ctx, target: discord.Member, amount: str):
+        val = parse_amount(amount, 0)
+        if val < 0:
+            await ctx.send("❌ Số tiền không hợp lệ!")
+            return
+        data = load_db()
+        u = get_user(data, target.id)
+        u["bank"] = val
+        save_db(data)
+        await ctx.send(f"🏦 Đã đặt số dư Bank của {target.mention} thành **{val:,}** {COIN}!")
+
+    @commands.command(name="addbank")
+    @commands.has_permissions(administrator=True)
+    async def cmd_addbank(self, ctx, target: discord.Member, amount: str):
+        val = parse_amount(amount, 0)
+        if val <= 0:
+            await ctx.send("❌ Số tiền không hợp lệ!")
+            return
+        data = load_db()
+        u = get_user(data, target.id)
+        u["bank"] = max(0, u.get("bank", 0) + val)
+        save_db(data)
+        await ctx.send(f"✨ Đã cộng **+{val:,}** {COIN} vào Bank cho {target.mention}! (Bank: **{u['bank']:,}** {COIN})")
 
 
 async def setup(bot):

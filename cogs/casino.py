@@ -4,7 +4,7 @@ from discord.ext import commands
 from discord import app_commands
 import random
 from typing import Optional
-from cogs.database import load_db, save_db, get_user, add_to_treasury, calculate_win_rate, apply_bank_tax, calculate_loan_debt
+from cogs.database import load_db, save_db, get_user, add_to_treasury, calculate_win_rate, apply_bank_tax, calculate_loan_debt, parse_amount
 
 COIN = "💵"
 
@@ -176,9 +176,14 @@ class Casino(commands.Cog):
 
     # ================= 1. TÀI XỈU =================
     @commands.command(name="tx", aliases=["taixiu"])
-    async def cmd_tx(self, ctx, amount: int, choice: str):
-        if amount <= 0:
-            await ctx.send("❌ Tiền cược phải lớn hơn 0!")
+    async def cmd_tx(self, ctx, amount: str, choice: str):
+        data = load_db()
+        apply_bank_tax(data)
+        u = get_user(data, ctx.author.id)
+
+        bet_val = parse_amount(amount, u.get("wallet", 0))
+        if bet_val <= 0:
+            await ctx.send("❌ Số tiền cược không hợp lệ! (Ví dụ: `!tx 500k t`, `!tx 10b x`, `!tx all t`)")
             return
 
         choice = choice.lower()
@@ -190,9 +195,6 @@ class Casino(commands.Cog):
             await ctx.send("❌ Vui lòng chọn `t` (Tài) hoặc `x` (Xỉu)!")
             return
 
-        data = load_db()
-        apply_bank_tax(data)
-
         # 🚨 KIỂM TRA PHONG TỎA DO NỢ XẤU
         is_locked, tot_debt = check_casino_lockout(data, ctx.author.id)
         if is_locked:
@@ -201,12 +203,11 @@ class Casino(commands.Cog):
                            f"👉 Bắt buộc phải đi làm (`!work`, `!daily`, `!laodong`) để trả nợ (`!trano`) mới được mở lại sòng bạc!")
             return
 
-        u = get_user(data, ctx.author.id)
-        if u.get("wallet", 0) < amount:
+        if u.get("wallet", 0) < bet_val:
             await ctx.send(f"❌ Bạn không đủ tiền trong ví! (Ví: **{u.get('wallet', 0):,}** {COIN})")
             return
 
-        win_prob = calculate_win_rate(data, ctx.author.id, amount)
+        win_prob = calculate_win_rate(data, ctx.author.id, bet_val)
         user_won = (random.random() < win_prob)
 
         if user_won:
@@ -238,46 +239,48 @@ class Casino(commands.Cog):
         d_str = f"🎲 `{d1}` + `{d2}` + `{d3}` = **{total} điểm**"
 
         if is_bao:
-            u["wallet"] -= amount
-            record_game(u, False, -amount)
-            msg = f"🌪️ **BÃO XÚC XẮC 3 CON {d1}!**\n💀 Nhà cái hốt trọn ổ cả làng! Mất **-{amount:,}** {COIN}!"
+            u["wallet"] -= bet_val
+            record_game(u, False, -bet_val)
+            msg = f"🌪️ **BÃO XÚC XẮC 3 CON {d1}!**\n💀 Nhà cái hốt trọn ổ cả làng! Mất **-{bet_val:,}** {COIN}!"
             color = discord.Color.red()
         elif user_won:
-            tax = int(amount * 0.10)
-            net_win = amount - tax
+            tax = int(bet_val * 0.10)
+            net_win = bet_val - tax
             u["wallet"] += net_win
             record_game(u, True, net_win)
             add_to_treasury(data, tax)
             msg = f"🎉 **BẠN ĐOÁN ĐÚNG ({actual.upper()})!**\n🏆 Thắng: **+{net_win:,}** {COIN} *(Thuế 10%: -{tax:,} {COIN})*!"
             color = discord.Color.green()
         else:
-            u["wallet"] -= amount
-            record_game(u, False, -amount)
-            msg = f"💀 **BẠN ĐOÁN SAI ({actual.upper()})!**\n💸 Mất **-{amount:,}** {COIN}!"
+            u["wallet"] -= bet_val
+            record_game(u, False, -bet_val)
+            msg = f"💀 **BẠN ĐOÁN SAI ({actual.upper()})!**\n💸 Mất **-{bet_val:,}** {COIN}!"
             color = discord.Color.red()
 
         save_db(data)
         embed = discord.Embed(
             title="🎲 SÒNG BẠC TÀI XỈU 🎲",
-            description=f"**Người chơi:** {ctx.author.mention} | **Cược:** **{amount:,}** {COIN} vào **{user_choice.upper()}**\n\n"
+            description=f"**Người chơi:** {ctx.author.mention} | **Cược:** **{bet_val:,}** {COIN} vào **{user_choice.upper()}**\n\n"
                         f"{d_str}\n\n{msg}\n💰 Ví hiện tại: **{u['wallet']:,}** {COIN}",
             color=color
         )
-        embed.set_footer(text="Thuế thắng cược: 10% nộp vào Kho Bạc Bot")
+        embed.set_footer(text="Thuế thắng cược: 10% nộp vào Kho Bạc Bot • Hỗ trợ cược ngàn tỷ (10b, 500b, 1t)")
         await ctx.send(embed=embed)
 
-    @app_commands.command(name="taixiu", description="Đổ xúc xắc Tài Xỉu (Xỉu: 4-10, Tài: 11-17, Bão: Nhà cái ăn sạch)")
+    @app_commands.command(name="taixiu", description="Đổ xúc xắc Tài Xỉu (Hỗ trợ cược ngàn tỷ: 100k, 50m, 10b, 1t, all)")
     @app_commands.choices(lua_chon=[
         app_commands.Choice(name="🟢 Xỉu (4 - 10 điểm)", value="xiu"),
         app_commands.Choice(name="🔴 Tài (11 - 17 điểm)", value="tai")
     ])
-    async def slash_tx(self, interaction: discord.Interaction, tien_cuoc: int, lua_chon: app_commands.Choice[str]):
-        if tien_cuoc <= 0:
-            await interaction.response.send_message("❌ Tiền cược phải lớn hơn 0!", ephemeral=True)
-            return
-
+    async def slash_tx(self, interaction: discord.Interaction, tien_cuoc: str, lua_chon: app_commands.Choice[str]):
         data = load_db()
         apply_bank_tax(data)
+        u = get_user(data, interaction.user.id)
+
+        bet_val = parse_amount(tien_cuoc, u.get("wallet", 0))
+        if bet_val <= 0:
+            await interaction.response.send_message("❌ Tiền cược không hợp lệ! (Ví dụ: `500k`, `10m`, `10b`, `all`)", ephemeral=True)
+            return
 
         # 🚨 KIỂM TRA PHONG TỎA DO NỢ XẤU
         is_locked, tot_debt = check_casino_lockout(data, interaction.user.id)
@@ -290,13 +293,12 @@ class Casino(commands.Cog):
             )
             return
 
-        u = get_user(data, interaction.user.id)
-        if u.get("wallet", 0) < tien_cuoc:
+        if u.get("wallet", 0) < bet_val:
             await interaction.response.send_message(f"❌ Ví không đủ tiền! Hiện có: **{u.get('wallet', 0):,}** {COIN}", ephemeral=True)
             return
 
         user_choice = lua_chon.value
-        win_prob = calculate_win_rate(data, interaction.user.id, tien_cuoc)
+        win_prob = calculate_win_rate(data, interaction.user.id, bet_val)
         user_won = (random.random() < win_prob)
 
         if user_won:
@@ -328,28 +330,28 @@ class Casino(commands.Cog):
         d_str = f"🎲 `{d1}` + `{d2}` + `{d3}` = **{total} điểm**"
 
         if is_bao:
-            u["wallet"] -= tien_cuoc
-            record_game(u, False, -tien_cuoc)
-            msg = f"🌪️ **BÃO XÚC XẮC 3 CON {d1}!**\n💀 Nhà cái hốt trọn ổ! Mất **-{tien_cuoc:,}** {COIN}!"
+            u["wallet"] -= bet_val
+            record_game(u, False, -bet_val)
+            msg = f"🌪️ **BÃO XÚC XẮC 3 CON {d1}!**\n💀 Nhà cái hốt trọn ổ! Mất **-{bet_val:,}** {COIN}!"
             color = discord.Color.red()
         elif user_won:
-            tax = int(tien_cuoc * 0.10)
-            net_win = tien_cuoc - tax
+            tax = int(bet_val * 0.10)
+            net_win = bet_val - tax
             u["wallet"] += net_win
             record_game(u, True, net_win)
             add_to_treasury(data, tax)
             msg = f"🎉 **BẠN ĐOÁN ĐÚNG ({actual.upper()})!**\n🏆 Thắng: **+{net_win:,}** {COIN} *(Thuế 10%: -{tax:,} {COIN})*!"
             color = discord.Color.green()
         else:
-            u["wallet"] -= tien_cuoc
-            record_game(u, False, -tien_cuoc)
-            msg = f"💀 **BẠN ĐOÁN SAI ({actual.upper()})!**\n💸 Mất **-{tien_cuoc:,}** {COIN}!"
+            u["wallet"] -= bet_val
+            record_game(u, False, -bet_val)
+            msg = f"💀 **BẠN ĐOÁN SAI ({actual.upper()})!**\n💸 Mất **-{bet_val:,}** {COIN}!"
             color = discord.Color.red()
 
         save_db(data)
         embed = discord.Embed(
             title="🎲 SÒNG BẠC TÀI XỈU 🎲",
-            description=f"**Người chơi:** {interaction.user.mention} | **Cược:** **{tien_cuoc:,}** {COIN} vào **{lua_chon.name}**\n\n"
+            description=f"**Người chơi:** {interaction.user.mention} | **Cược:** **{bet_val:,}** {COIN} vào **{lua_chon.name}**\n\n"
                         f"{d_str}\n\n{msg}\n💰 Ví hiện tại: **{u['wallet']:,}** {COIN}",
             color=color
         )
@@ -358,13 +360,15 @@ class Casino(commands.Cog):
 
     # ================= 2. XÌ DÁCH BLACKJACK =================
     @commands.command(name="bj", aliases=["blackjack", "xidach"])
-    async def cmd_bj(self, ctx, amount: int):
-        if amount <= 0:
-            await ctx.send("❌ Tiền cược phải lớn hơn 0!")
-            return
-
+    async def cmd_bj(self, ctx, amount: str):
         data = load_db()
         apply_bank_tax(data)
+        u = get_user(data, ctx.author.id)
+
+        bet_val = parse_amount(amount, u.get("wallet", 0))
+        if bet_val <= 0:
+            await ctx.send("❌ Tiền cược không hợp lệ! (Ví dụ: `!bj 10m`, `!bj 5b`, `!bj all`)")
+            return
 
         # 🚨 KIỂM TRA PHONG TỎA DO NỢ XẤU
         is_locked, tot_debt = check_casino_lockout(data, ctx.author.id)
@@ -374,8 +378,7 @@ class Casino(commands.Cog):
                            f"👉 Bắt buộc phải đi làm (`!work`, `!daily`, `!laodong`) để trả nợ (`!trano`) mới được mở lại sòng bạc!")
             return
 
-        u = get_user(data, ctx.author.id)
-        if u.get("wallet", 0) < amount:
+        if u.get("wallet", 0) < bet_val:
             await ctx.send(f"❌ Bạn không đủ tiền trong ví! (Ví: **{u.get('wallet', 0):,}** {COIN})")
             return
 
@@ -383,7 +386,7 @@ class Casino(commands.Cog):
         d_hand = [draw_card(), draw_card()]
 
         if calculate_hand(p_hand) == 21:
-            raw_profit = int(amount * 1.5)
+            raw_profit = int(bet_val * 1.5)
             tax = int(raw_profit * 0.10)
             net_profit = raw_profit - tax
             u["wallet"] += net_profit
@@ -401,18 +404,20 @@ class Casino(commands.Cog):
             await ctx.send(embed=embed)
             return
 
-        view = BlackjackView(ctx.author, amount, p_hand, d_hand)
+        view = BlackjackView(ctx.author, bet_val, p_hand, d_hand)
         embed = view.build_embed()
         await ctx.send(embed=embed, view=view)
 
-    @app_commands.command(name="blackjack", description="Đánh bài Xì Dách Blackjack (Nút bấm 🃏 Rút / 🛑 Dằn bài)")
-    async def slash_bj(self, interaction: discord.Interaction, tien_cuoc: int):
-        if tien_cuoc <= 0:
-            await interaction.response.send_message("❌ Tiền cược phải lớn hơn 0!", ephemeral=True)
-            return
-
+    @app_commands.command(name="blackjack", description="Đánh bài Xì Dách Blackjack (Hỗ trợ cược ngàn tỷ: 10m, 5b, all)")
+    async def slash_bj(self, interaction: discord.Interaction, tien_cuoc: str):
         data = load_db()
         apply_bank_tax(data)
+        u = get_user(data, interaction.user.id)
+
+        bet_val = parse_amount(tien_cuoc, u.get("wallet", 0))
+        if bet_val <= 0:
+            await interaction.response.send_message("❌ Tiền cược không hợp lệ! (Ví dụ: `500k`, `10m`, `5b`, `all`)", ephemeral=True)
+            return
 
         # 🚨 KIỂM TRA PHONG TỎA DO NỢ XẤU
         is_locked, tot_debt = check_casino_lockout(data, interaction.user.id)
@@ -425,8 +430,7 @@ class Casino(commands.Cog):
             )
             return
 
-        u = get_user(data, interaction.user.id)
-        if u.get("wallet", 0) < tien_cuoc:
+        if u.get("wallet", 0) < bet_val:
             await interaction.response.send_message(f"❌ Ví không đủ tiền! Hiện có: **{u.get('wallet', 0):,}** {COIN}", ephemeral=True)
             return
 
@@ -434,7 +438,7 @@ class Casino(commands.Cog):
         d_hand = [draw_card(), draw_card()]
 
         if calculate_hand(p_hand) == 21:
-            raw_profit = int(tien_cuoc * 1.5)
+            raw_profit = int(bet_val * 1.5)
             tax = int(raw_profit * 0.10)
             net_profit = raw_profit - tax
             u["wallet"] += net_profit
@@ -452,15 +456,20 @@ class Casino(commands.Cog):
             await interaction.response.send_message(embed=embed)
             return
 
-        view = BlackjackView(interaction.user, tien_cuoc, p_hand, d_hand)
+        view = BlackjackView(interaction.user, bet_val, p_hand, d_hand)
         embed = view.build_embed()
         await interaction.response.send_message(embed=embed, view=view)
 
     # ================= 3. TUNG ĐỒNG XU COINFLIP =================
     @commands.command(name="cf", aliases=["coinflip", "flip"])
-    async def cmd_cf(self, ctx, amount: int, choice: str):
-        if amount <= 0:
-            await ctx.send("❌ Tiền cược phải lớn hơn 0!")
+    async def cmd_cf(self, ctx, amount: str, choice: str):
+        data = load_db()
+        apply_bank_tax(data)
+        u = get_user(data, ctx.author.id)
+
+        bet_val = parse_amount(amount, u.get("wallet", 0))
+        if bet_val <= 0:
+            await ctx.send("❌ Tiền cược không hợp lệ! (Ví dụ: `!cf 10m s`, `!cf 5b n`, `!cf all s`)")
             return
 
         choice = choice.lower()
@@ -472,9 +481,6 @@ class Casino(commands.Cog):
             await ctx.send("❌ Chọn `s` (Sấp) hoặc `n` (Ngửa)!")
             return
 
-        data = load_db()
-        apply_bank_tax(data)
-
         # 🚨 KIỂM TRA PHONG TỎA DO NỢ XẤU
         is_locked, tot_debt = check_casino_lockout(data, ctx.author.id)
         if is_locked:
@@ -483,28 +489,27 @@ class Casino(commands.Cog):
                            f"👉 Bắt buộc phải đi làm (`!work`, `!daily`, `!laodong`) để trả nợ (`!trano`) mới được mở lại sòng bạc!")
             return
 
-        u = get_user(data, ctx.author.id)
-        if u.get("wallet", 0) < amount:
+        if u.get("wallet", 0) < bet_val:
             await ctx.send(f"❌ Bạn không đủ tiền trong ví! (Ví: **{u.get('wallet', 0):,}** {COIN})")
             return
 
-        win_prob = calculate_win_rate(data, ctx.author.id, amount)
+        win_prob = calculate_win_rate(data, ctx.author.id, bet_val)
         user_won = (random.random() < win_prob)
         actual = user_choice if user_won else ("ngua" if user_choice == "sap" else "sap")
         coin_icon = "⚪ **MẶT SẤP**" if actual == "sap" else "🟡 **MẶT NGỬA**"
 
         if user_won:
-            tax = int(amount * 0.10)
-            net_win = amount - tax
+            tax = int(bet_val * 0.10)
+            net_win = bet_val - tax
             u["wallet"] += net_win
             record_game(u, True, net_win)
             add_to_treasury(data, tax)
             msg = f"🎉 **ĐOÁN ĐÚNG!** Thắng: **+{net_win:,}** {COIN} *(Thuế 10%: -{tax:,} {COIN})*!"
             color = discord.Color.green()
         else:
-            u["wallet"] -= amount
-            record_game(u, False, -amount)
-            msg = f"💀 **ĐOÁN SAI!** Mất **-{amount:,}** {COIN}!"
+            u["wallet"] -= bet_val
+            record_game(u, False, -bet_val)
+            msg = f"💀 **ĐOÁN SAI!** Mất **-{bet_val:,}** {COIN}!"
             color = discord.Color.red()
 
         save_db(data)
@@ -521,13 +526,15 @@ class Casino(commands.Cog):
         app_commands.Choice(name="⚪ Mặt Sấp", value="sap"),
         app_commands.Choice(name="🟡 Mặt Ngửa", value="ngua")
     ])
-    async def slash_cf(self, interaction: discord.Interaction, tien_cuoc: int, lua_chon: app_commands.Choice[str]):
-        if tien_cuoc <= 0:
-            await interaction.response.send_message("❌ Tiền cược phải lớn hơn 0!", ephemeral=True)
-            return
-
+    async def slash_cf(self, interaction: discord.Interaction, tien_cuoc: str, lua_chon: app_commands.Choice[str]):
         data = load_db()
         apply_bank_tax(data)
+        u = get_user(data, interaction.user.id)
+
+        bet_val = parse_amount(tien_cuoc, u.get("wallet", 0))
+        if bet_val <= 0:
+            await interaction.response.send_message("❌ Tiền cược không hợp lệ! (Ví dụ: `500k`, `10m`, `5b`, `all`)", ephemeral=True)
+            return
 
         # 🚨 KIỂM TRA PHONG TỎA DO NỢ XẤU
         is_locked, tot_debt = check_casino_lockout(data, interaction.user.id)
@@ -540,29 +547,28 @@ class Casino(commands.Cog):
             )
             return
 
-        u = get_user(data, interaction.user.id)
-        if u.get("wallet", 0) < tien_cuoc:
+        if u.get("wallet", 0) < bet_val:
             await interaction.response.send_message(f"❌ Ví không đủ tiền! Hiện có: **{u.get('wallet', 0):,}** {COIN}", ephemeral=True)
             return
 
         user_choice = lua_chon.value
-        win_prob = calculate_win_rate(data, interaction.user.id, tien_cuoc)
+        win_prob = calculate_win_rate(data, interaction.user.id, bet_val)
         user_won = (random.random() < win_prob)
         actual = user_choice if user_won else ("ngua" if user_choice == "sap" else "sap")
         coin_icon = "⚪ **MẶT SẤP**" if actual == "sap" else "🟡 **MẶT NGỬA**"
 
         if user_won:
-            tax = int(tien_cuoc * 0.10)
-            net_win = tien_cuoc - tax
+            tax = int(bet_val * 0.10)
+            net_win = bet_val - tax
             u["wallet"] += net_win
             record_game(u, True, net_win)
             add_to_treasury(data, tax)
             msg = f"🎉 **ĐOÁN ĐÚNG!** Thắng: **+{net_win:,}** {COIN} *(Thuế 10%: -{tax:,} {COIN})*!"
             color = discord.Color.green()
         else:
-            u["wallet"] -= tien_cuoc
-            record_game(u, False, -tien_cuoc)
-            msg = f"💀 **ĐOÁN SAI!** Mất **-{tien_cuoc:,}** {COIN}!"
+            u["wallet"] -= bet_val
+            record_game(u, False, -bet_val)
+            msg = f"💀 **ĐOÁN SAI!** Mất **-{bet_val:,}** {COIN}!"
             color = discord.Color.red()
 
         save_db(data)
@@ -575,13 +581,15 @@ class Casino(commands.Cog):
 
     # ================= 4. QUAY HŨ SLOTS =================
     @commands.command(name="slot", aliases=["slots"])
-    async def cmd_slot(self, ctx, amount: int):
-        if amount <= 0:
-            await ctx.send("❌ Tiền cược phải lớn hơn 0!")
-            return
-
+    async def cmd_slot(self, ctx, amount: str):
         data = load_db()
         apply_bank_tax(data)
+        u = get_user(data, ctx.author.id)
+
+        bet_val = parse_amount(amount, u.get("wallet", 0))
+        if bet_val <= 0:
+            await ctx.send("❌ Tiền cược không hợp lệ! (Ví dụ: `!slot 10m`, `!slot 5b`, `!slot all`)")
+            return
 
         # 🚨 KIỂM TRA PHONG TỎA DO NỢ XẤU
         is_locked, tot_debt = check_casino_lockout(data, ctx.author.id)
@@ -591,71 +599,83 @@ class Casino(commands.Cog):
                            f"👉 Bắt buộc phải đi làm (`!work`, `!daily`, `!laodong`) để trả nợ (`!trano`) mới được mở lại sòng bạc!")
             return
 
-        u = get_user(data, ctx.author.id)
-        if u.get("wallet", 0) < amount:
+        if u.get("wallet", 0) < bet_val:
             await ctx.send(f"❌ Bạn không đủ tiền trong ví! (Ví: **{u.get('wallet', 0):,}** {COIN})")
             return
 
-        win_prob = calculate_win_rate(data, ctx.author.id, amount)
+        win_prob = calculate_win_rate(data, ctx.author.id, bet_val)
         user_won = (random.random() < win_prob)
 
         symbols = ["🍎", "🍋", "🍇", "💎", "7️⃣", "👑", "💀", "💩", "🤡"]
 
+        # 🎯 QUY TẮC: NẾU CƯỢC TRÊN 10B (10 TỶ), TỶ LỆ RA X10 JACKPOT = 0!
+        is_above_10b = (bet_val > 10_000_000_000)
+
         if user_won:
-            if random.random() < 0.15:
-                s1 = random.choice(["7️⃣", "👑", "💎"])
+            if not is_above_10b and random.random() < 0.15:
+                s1 = random.choice(["7️⃣", "👑"])
                 s2, s3 = s1, s1
             else:
                 s1 = random.choice(["🍎", "🍋", "🍇", "💎"])
                 s2 = s1
-                s3 = random.choice([s for s in symbols if s != s1])
+                s3 = s1 if (random.random() < 0.35) else random.choice([s for s in symbols if s != s1])
         else:
             sample = random.sample(symbols, 3)
             s1, s2, s3 = sample[0], sample[1], sample[2]
+            # Đảm bảo thua không vô tình ra 3 hình x10
+            if s1 in ["7️⃣", "👑"] and s1 == s2 == s3:
+                s3 = "🍎"
 
         slot_str = f"╭──────────╮\n│  {s1} │ {s2} │ {s3}  │\n╰──────────╯"
 
         if s1 == s2 == s3:
-            raw_win = amount * 10 if s1 in ["7️⃣", "👑"] else amount * 5
+            if s1 in ["7️⃣", "👑"] and not is_above_10b:
+                raw_win = bet_val * 10
+            else:
+                raw_win = bet_val * 5
             tax = int(raw_win * 0.10)
             net_win = raw_win - tax
             u["wallet"] += net_win
             record_game(u, True, net_win)
             add_to_treasury(data, tax)
-            msg = f"💥 **JACKPOT NỔ HŨ THẦN THÁNH!**\n🎉 Thắng nhận: **+{net_win:,}** {COIN} *(Thuế 10%: -{tax:,} {COIN})*!"
+            tag = "💥 **JACKPOT NỔ HŨ THẦN THÁNH (X10)!**" if (s1 in ["7️⃣", "👑"] and not is_above_10b) else f"🌟 **TRÚNG 3 HÌNH {s1} (X5)!**"
+            msg = f"{tag}\n🎉 Thắng nhận: **+{net_win:,}** {COIN} *(Thuế 10%: -{tax:,} {COIN})*!"
             color = discord.Color.gold()
         elif s1 == s2 or s2 == s3 or s1 == s3:
-            raw_win = int(amount * 1.5)
+            raw_win = int(bet_val * 1.5)
             tax = int(raw_win * 0.10)
             net_win = raw_win - tax
             u["wallet"] += net_win
             record_game(u, True, net_win)
             add_to_treasury(data, tax)
-            msg = f"✨ **TRÚNG 2 HÌNH!**\n🎉 Thắng nhận: **+{net_win:,}** {COIN} *(Thuế 10%: -{tax:,} {COIN})*!"
+            msg = f"✨ **TRÚNG 2 HÌNH (X1.5)!**\n🎉 Thắng nhận: **+{net_win:,}** {COIN} *(Thuế 10%: -{tax:,} {COIN})*!"
             color = discord.Color.green()
         else:
-            u["wallet"] -= amount
-            record_game(u, False, -amount)
-            msg = f"💀 Không trúng hình nào! Mất **-{amount:,}** {COIN}."
+            u["wallet"] -= bet_val
+            record_game(u, False, -bet_val)
+            msg = f"💀 Không trúng hình nào! Mất **-{bet_val:,}** {COIN}."
             color = discord.Color.red()
 
         save_db(data)
+        footer_note = "Thuế thắng: 10% • Cược trên 10 Tỷ: Khóa Jackpot x10 chống phá sản ngân khố!" if is_above_10b else "Thuế thắng: 10% • Tỷ lệ nổ hũ x10 khi cược dưới 10 Tỷ!"
         embed = discord.Embed(
             title="🎰 MÁY XÈNG QUAY HŨ (SLOTS) 🎰",
             description=f"{slot_str}\n\n{msg}\n💰 Ví hiện tại: **{u['wallet']:,}** {COIN}",
             color=color
         )
-        embed.set_footer(text="Thuế thắng: 10% • Tỷ lệ nổ hũ dựa trên số tiền cược!")
+        embed.set_footer(text=footer_note)
         await ctx.send(embed=embed)
 
-    @app_commands.command(name="slots", description="Quay hũ máy xèng hoa quả trúng Jackpot")
-    async def slash_slot(self, interaction: discord.Interaction, tien_cuoc: int):
-        if tien_cuoc <= 0:
-            await interaction.response.send_message("❌ Tiền cược phải lớn hơn 0!", ephemeral=True)
-            return
-
+    @app_commands.command(name="slots", description="Quay hũ máy xèng hoa quả (Cược > 10B khóa x10 jackpot)")
+    async def slash_slot(self, interaction: discord.Interaction, tien_cuoc: str):
         data = load_db()
         apply_bank_tax(data)
+        u = get_user(data, interaction.user.id)
+
+        bet_val = parse_amount(tien_cuoc, u.get("wallet", 0))
+        if bet_val <= 0:
+            await interaction.response.send_message("❌ Tiền cược không hợp lệ! (Ví dụ: `500k`, `10m`, `5b`, `all`)", ephemeral=True)
+            return
 
         # 🚨 KIỂM TRA PHONG TỎA DO NỢ XẤU
         is_locked, tot_debt = check_casino_lockout(data, interaction.user.id)
@@ -668,67 +688,80 @@ class Casino(commands.Cog):
             )
             return
 
-        u = get_user(data, interaction.user.id)
-        if u.get("wallet", 0) < tien_cuoc:
+        if u.get("wallet", 0) < bet_val:
             await interaction.response.send_message(f"❌ Ví không đủ tiền! Hiện có: **{u.get('wallet', 0):,}** {COIN}", ephemeral=True)
             return
 
-        win_prob = calculate_win_rate(data, interaction.user.id, tien_cuoc)
+        win_prob = calculate_win_rate(data, interaction.user.id, bet_val)
         user_won = (random.random() < win_prob)
 
         symbols = ["🍎", "🍋", "🍇", "💎", "7️⃣", "👑", "💀", "💩", "🤡"]
+        is_above_10b = (bet_val > 10_000_000_000)
 
         if user_won:
-            if random.random() < 0.15:
-                s1 = random.choice(["7️⃣", "👑", "💎"])
+            if not is_above_10b and random.random() < 0.15:
+                s1 = random.choice(["7️⃣", "👑"])
                 s2, s3 = s1, s1
             else:
                 s1 = random.choice(["🍎", "🍋", "🍇", "💎"])
                 s2 = s1
-                s3 = random.choice([s for s in symbols if s != s1])
+                s3 = s1 if (random.random() < 0.35) else random.choice([s for s in symbols if s != s1])
         else:
             sample = random.sample(symbols, 3)
             s1, s2, s3 = sample[0], sample[1], sample[2]
+            if s1 in ["7️⃣", "👑"] and s1 == s2 == s3:
+                s3 = "🍎"
 
         slot_str = f"╭──────────╮\n│  {s1} │ {s2} │ {s3}  │\n╰──────────╯"
 
         if s1 == s2 == s3:
-            raw_win = tien_cuoc * 10 if s1 in ["7️⃣", "👑"] else tien_cuoc * 5
+            if s1 in ["7️⃣", "👑"] and not is_above_10b:
+                raw_win = bet_val * 10
+            else:
+                raw_win = bet_val * 5
             tax = int(raw_win * 0.10)
             net_win = raw_win - tax
             u["wallet"] += net_win
             record_game(u, True, net_win)
             add_to_treasury(data, tax)
-            msg = f"💥 **JACKPOT NỔ HŨ THẦN THÁNH!**\n🎉 Thắng: **+{net_win:,}** {COIN} *(Thuế 10%: -{tax:,} {COIN})*!"
+            tag = "💥 **JACKPOT NỔ HŨ THẦN THÁNH (X10)!**" if (s1 in ["7️⃣", "👑"] and not is_above_10b) else f"🌟 **TRÚNG 3 HÌNH {s1} (X5)!**"
+            msg = f"{tag}\n🎉 Thắng: **+{net_win:,}** {COIN} *(Thuế 10%: -{tax:,} {COIN})*!"
             color = discord.Color.gold()
         elif s1 == s2 or s2 == s3 or s1 == s3:
-            raw_win = int(tien_cuoc * 1.5)
+            raw_win = int(bet_val * 1.5)
             tax = int(raw_win * 0.10)
             net_win = raw_win - tax
             u["wallet"] += net_win
             record_game(u, True, net_win)
             add_to_treasury(data, tax)
-            msg = f"✨ **TRÚNG 2 HÌNH!**\n🎉 Thắng: **+{net_win:,}** {COIN} *(Thuế 10%: -{tax:,} {COIN})*!"
+            msg = f"✨ **TRÚNG 2 HÌNH (X1.5)!**\n🎉 Thắng: **+{net_win:,}** {COIN} *(Thuế 10%: -{tax:,} {COIN})*!"
             color = discord.Color.green()
         else:
-            u["wallet"] -= tien_cuoc
-            record_game(u, False, -tien_cuoc)
-            msg = f"💀 Không trúng hình nào! Mất **-{tien_cuoc:,}** {COIN}."
+            u["wallet"] -= bet_val
+            record_game(u, False, -bet_val)
+            msg = f"💀 Không trúng hình nào! Mất **-{bet_val:,}** {COIN}."
             color = discord.Color.red()
 
         save_db(data)
+        footer_note = "Thuế thắng: 10% • Cược trên 10 Tỷ: Khóa Jackpot x10 chống phá sản ngân khố!" if is_above_10b else "Thuế thắng: 10% • Tỷ lệ nổ hũ x10 khi cược dưới 10 Tỷ!"
         embed = discord.Embed(
             title="🎰 MÁY XÈNG QUAY HŨ (SLOTS) 🎰",
             description=f"{slot_str}\n\n{msg}\n💰 Ví hiện tại: **{u['wallet']:,}** {COIN}",
             color=color
         )
+        embed.set_footer(text=footer_note)
         await interaction.response.send_message(embed=embed)
 
     # ================= 5. BẦU CUA =================
     @commands.command(name="baucua", aliases=["bc"])
-    async def cmd_baucua(self, ctx, amount: int, choice: str):
-        if amount <= 0:
-            await ctx.send("❌ Tiền cược phải lớn hơn 0!")
+    async def cmd_baucua(self, ctx, amount: str, choice: str):
+        data = load_db()
+        apply_bank_tax(data)
+        u = get_user(data, ctx.author.id)
+
+        bet_val = parse_amount(amount, u.get("wallet", 0))
+        if bet_val <= 0:
+            await ctx.send("❌ Tiền cược không hợp lệ! (Ví dụ: `!bc 10m bau`, `!bc 5b cua`, `!bc all tom`)")
             return
 
         bc_map = {
@@ -744,9 +777,6 @@ class Casino(commands.Cog):
             await ctx.send("❌ Chọn: `bau`, `cua`, `tom`, `ca`, `ga`, `nai`!")
             return
 
-        data = load_db()
-        apply_bank_tax(data)
-
         # 🚨 KIỂM TRA PHONG TỎA DO NỢ XẤU
         is_locked, tot_debt = check_casino_lockout(data, ctx.author.id)
         if is_locked:
@@ -755,15 +785,14 @@ class Casino(commands.Cog):
                            f"👉 Bắt buộc phải đi làm (`!work`, `!daily`, `!laodong`) để trả nợ (`!trano`) mới được mở lại sòng bạc!")
             return
 
-        u = get_user(data, ctx.author.id)
-        if u.get("wallet", 0) < amount:
+        if u.get("wallet", 0) < bet_val:
             await ctx.send(f"❌ Ví không đủ tiền! (Ví: **{u.get('wallet', 0):,}** {COIN})")
             return
 
         all_animals = ["🍐 Bầu", "🦀 Cua", "🦐 Tôm", "🐟 Cá", "🐔 Gà", "🦌 Nai"]
         chosen_animal = bc_map[choice_key]
 
-        win_prob = calculate_win_rate(data, ctx.author.id, amount)
+        win_prob = calculate_win_rate(data, ctx.author.id, bet_val)
         user_won = (random.random() < win_prob)
 
         if user_won:
@@ -781,7 +810,7 @@ class Casino(commands.Cog):
         d_str = " | ".join(dices)
 
         if match_count > 0:
-            raw_win = amount * match_count
+            raw_win = bet_val * match_count
             tax = int(raw_win * 0.10)
             net_win = raw_win - tax
             u["wallet"] += net_win
@@ -791,22 +820,22 @@ class Casino(commands.Cog):
                   f"🏆 Thắng: **+{net_win:,}** {COIN} *(Thuế 10%: -{tax:,} {COIN})*!"
             color = discord.Color.green()
         else:
-            u["wallet"] -= amount
-            record_game(u, False, -amount)
-            msg = f"💀 **TRẬT LẤT!** Mất **-{amount:,}** {COIN}."
+            u["wallet"] -= bet_val
+            record_game(u, False, -bet_val)
+            msg = f"💀 **TRẬT LẤT!** Mất **-{bet_val:,}** {COIN}."
             color = discord.Color.red()
 
         save_db(data)
         embed = discord.Embed(
             title="🦞 SÒNG BẠC BẦU CUA TÔM CÁ 🎲",
-            description=f"**Người chơi:** {ctx.author.mention} | **Cược:** **{amount:,}** {COIN} vào **{chosen_animal}**\n\n"
+            description=f"**Người chơi:** {ctx.author.mention} | **Cược:** **{bet_val:,}** {COIN} vào **{chosen_animal}**\n\n"
                         f"🎲 **Kết quả:** [ {d_str} ]\n\n{msg}\n💰 Ví hiện tại: **{u['wallet']:,}** {COIN}",
             color=color
         )
         embed.set_footer(text="Thuế thắng: 10% nộp vào Kho Bạc Bot")
         await ctx.send(embed=embed)
 
-    @app_commands.command(name="baucua", description="Đổ xúc xắc Bầu Cua Tôm Cá")
+    @app_commands.command(name="baucua", description="Đổ xúc xắc Bầu Cua Tôm Cá (Hỗ trợ cược ngàn tỷ: 10m, 5b, all)")
     @app_commands.choices(con_vat=[
         app_commands.Choice(name="🍐 Bầu", value="bau"),
         app_commands.Choice(name="🦀 Cua", value="cua"),
@@ -815,13 +844,15 @@ class Casino(commands.Cog):
         app_commands.Choice(name="🐔 Gà", value="ga"),
         app_commands.Choice(name="🦌 Nai", value="nai")
     ])
-    async def slash_baucua(self, interaction: discord.Interaction, tien_cuoc: int, con_vat: app_commands.Choice[str]):
-        if tien_cuoc <= 0:
-            await interaction.response.send_message("❌ Tiền cược phải lớn hơn 0!", ephemeral=True)
-            return
-
+    async def slash_baucua(self, interaction: discord.Interaction, tien_cuoc: str, con_vat: app_commands.Choice[str]):
         data = load_db()
         apply_bank_tax(data)
+        u = get_user(data, interaction.user.id)
+
+        bet_val = parse_amount(tien_cuoc, u.get("wallet", 0))
+        if bet_val <= 0:
+            await interaction.response.send_message("❌ Tiền cược không hợp lệ! (Ví dụ: `500k`, `10m`, `5b`, `all`)", ephemeral=True)
+            return
 
         # 🚨 KIỂM TRA PHONG TỎA DO NỢ XẤU
         is_locked, tot_debt = check_casino_lockout(data, interaction.user.id)
@@ -834,15 +865,14 @@ class Casino(commands.Cog):
             )
             return
 
-        u = get_user(data, interaction.user.id)
-        if u.get("wallet", 0) < tien_cuoc:
+        if u.get("wallet", 0) < bet_val:
             await interaction.response.send_message(f"❌ Ví không đủ tiền! Hiện có: **{u.get('wallet', 0):,}** {COIN}", ephemeral=True)
             return
 
         all_animals = ["🍐 Bầu", "🦀 Cua", "🦐 Tôm", "🐟 Cá", "🐔 Gà", "🦌 Nai"]
         chosen_animal = con_vat.name
 
-        win_prob = calculate_win_rate(data, interaction.user.id, tien_cuoc)
+        win_prob = calculate_win_rate(data, interaction.user.id, bet_val)
         user_won = (random.random() < win_prob)
 
         if user_won:
@@ -860,7 +890,7 @@ class Casino(commands.Cog):
         d_str = " | ".join(dices)
 
         if match_count > 0:
-            raw_win = tien_cuoc * match_count
+            raw_win = bet_val * match_count
             tax = int(raw_win * 0.10)
             net_win = raw_win - tax
             u["wallet"] += net_win
@@ -870,15 +900,15 @@ class Casino(commands.Cog):
                   f"🏆 Thắng: **+{net_win:,}** {COIN} *(Thuế 10%: -{tax:,} {COIN})*!"
             color = discord.Color.green()
         else:
-            u["wallet"] -= tien_cuoc
-            record_game(u, False, -tien_cuoc)
-            msg = f"💀 **TRẬT LẤT!** Mất **-{tien_cuoc:,}** {COIN}."
+            u["wallet"] -= bet_val
+            record_game(u, False, -bet_val)
+            msg = f"💀 **TRẬT LẤT!** Mất **-{bet_val:,}** {COIN}."
             color = discord.Color.red()
 
         save_db(data)
         embed = discord.Embed(
             title="🦞 SÒNG BẠC BẦU CUA TÔM CÁ 🎲",
-            description=f"**Người chơi:** {interaction.user.mention} | **Cược:** **{tien_cuoc:,}** {COIN} vào **{chosen_animal}**\n\n"
+            description=f"**Người chơi:** {interaction.user.mention} | **Cược:** **{bet_val:,}** {COIN} vào **{chosen_animal}**\n\n"
                         f"🎲 **Kết quả:** [ {d_str} ]\n\n{msg}\n💰 Ví hiện tại: **{u['wallet']:,}** {COIN}",
             color=color
         )

@@ -6,7 +6,7 @@ import random
 import asyncio
 import time
 from typing import Optional
-from cogs.database import load_db, save_db, get_user, add_to_treasury, apply_bank_tax, calculate_loan_debt, deduct_loan_debt
+from cogs.database import load_db, save_db, get_user, add_to_treasury, apply_bank_tax, calculate_loan_debt, deduct_loan_debt, parse_amount
 
 COIN = "💵"
 
@@ -236,16 +236,20 @@ class Multiplayer(commands.Cog):
 
     # ================= 1. KÉO BÚA BAO SOLO =================
     @commands.command(name="rps", aliases=["keobuabao", "kbb"])
-    async def cmd_rps(self, ctx, opponent: discord.Member, bet: int = 1000):
+    async def cmd_rps(self, ctx, opponent: discord.Member, bet: str = "1000"):
         if opponent.id == ctx.author.id or opponent.bot:
             await ctx.send("❌ Đối thủ không hợp lệ!")
-            return
-        if bet <= 0:
-            await ctx.send("❌ Tiền cược phải lớn hơn 0!")
             return
 
         data = load_db()
         apply_bank_tax(data)
+        u1 = get_user(data, ctx.author.id)
+        u2 = get_user(data, opponent.id)
+
+        bet_val = parse_amount(bet, u1.get("wallet", 0))
+        if bet_val <= 0:
+            await ctx.send("❌ Tiền cược không hợp lệ! (Ví dụ: `!rps @user 500k`, `!rps @user 10b`, `!rps @user all`)")
+            return
 
         # 🚨 KIỂM TRA PHONG TỎA NỢ XẤU
         d1_debt, _, _, d1_over = calculate_loan_debt(data, ctx.author.id)
@@ -257,38 +261,39 @@ class Multiplayer(commands.Cog):
             await ctx.send(f"🚨 **ĐỐI THỦ ĐANG BỊ PHONG TỎA DO NỢ QUÁ HẠN!** (Nợ: **{d2_debt:,}** {COIN})")
             return
 
-        u1 = get_user(data, ctx.author.id)
-        u2 = get_user(data, opponent.id)
-
-        if u1.get("wallet", 0) < bet:
+        if u1.get("wallet", 0) < bet_val:
             await ctx.send(f"❌ Bạn không đủ tiền cược! (Ví: **{u1.get('wallet', 0):,}** {COIN})")
             return
-        if u2.get("wallet", 0) < bet:
-            await ctx.send(f"❌ {opponent.mention} không đủ tiền cược **{bet:,}** {COIN}!")
+        if u2.get("wallet", 0) < bet_val:
+            await ctx.send(f"❌ {opponent.mention} không đủ tiền cược **{bet_val:,}** {COIN}!")
             return
 
         embed = discord.Embed(
             title="⚔️ THÁCH ĐẤU KÉO BÚA BAO SOLO 1V1 🪨📄✂️",
             description=f"**{ctx.author.mention}** đã thách đấu **{opponent.mention}**!\n"
-                        f"💰 **Tiền cược:** **{bet:,}** {COIN}\n\n"
+                        f"💰 **Tiền cược:** **{bet_val:,}** {COIN}\n\n"
                         f"👉 Cả 2 hãy bấm chọn nút bên dưới (Lựa chọn được giữ bí mật 100%)!",
             color=discord.Color.blue()
         )
         embed.set_footer(text="Thuế thắng: 10% nộp vào Kho Bạc Bot")
-        view = RPSView(ctx.author, opponent, bet)
+        view = RPSView(ctx.author, opponent, bet_val)
         await ctx.send(content=f"{ctx.author.mention} vs {opponent.mention}", embed=embed, view=view)
 
-    @app_commands.command(name="rps", description="Thách đấu Kéo Búa Bao solo 1v1 cược tiền")
-    async def slash_rps(self, interaction: discord.Interaction, doi_thu: discord.Member, tien_cuoc: int = 1000):
+    @app_commands.command(name="rps", description="Thách đấu Kéo Búa Bao solo 1v1 cược tiền (Hỗ trợ 10m, 5b, all)")
+    async def slash_rps(self, interaction: discord.Interaction, doi_thu: discord.Member, tien_cuoc: str = "1000"):
         if doi_thu.id == interaction.user.id or doi_thu.bot:
             await interaction.response.send_message("❌ Không thể thách đấu chính mình / bot!", ephemeral=True)
-            return
-        if tien_cuoc <= 0:
-            await interaction.response.send_message("❌ Tiền cược phải lớn hơn 0!", ephemeral=True)
             return
 
         data = load_db()
         apply_bank_tax(data)
+        u1 = get_user(data, interaction.user.id)
+        u2 = get_user(data, doi_thu.id)
+
+        bet_val = parse_amount(tien_cuoc, u1.get("wallet", 0))
+        if bet_val <= 0:
+            await interaction.response.send_message("❌ Tiền cược không hợp lệ! (Ví dụ: `500k`, `10m`, `5b`, `all`)", ephemeral=True)
+            return
 
         # 🚨 KIỂM TRA PHONG TỎA NỢ XẤU
         d1_debt, _, _, d1_over = calculate_loan_debt(data, interaction.user.id)
@@ -300,39 +305,40 @@ class Multiplayer(commands.Cog):
             await interaction.response.send_message(f"🚨 **ĐỐI THỦ ĐANG BỊ PHONG TỎA DO NỢ QUÁ HẠN!** (Nợ: **{d2_debt:,}** {COIN})", ephemeral=True)
             return
 
-        u1 = get_user(data, interaction.user.id)
-        u2 = get_user(data, doi_thu.id)
-
-        if u1.get("wallet", 0) < tien_cuoc:
+        if u1.get("wallet", 0) < bet_val:
             await interaction.response.send_message(f"❌ Bạn không đủ tiền cược! (Ví: **{u1.get('wallet', 0):,}** {COIN})", ephemeral=True)
             return
-        if u2.get("wallet", 0) < tien_cuoc:
-            await interaction.response.send_message(f"❌ {doi_thu.mention} không đủ tiền cược **{tien_cuoc:,}** {COIN}!", ephemeral=True)
+        if u2.get("wallet", 0) < bet_val:
+            await interaction.response.send_message(f"❌ {doi_thu.mention} không đủ tiền cược **{bet_val:,}** {COIN}!", ephemeral=True)
             return
 
         embed = discord.Embed(
             title="⚔️ THÁCH ĐẤU KÉO BÚA BAO SOLO 1V1 🪨📄✂️",
             description=f"**{interaction.user.mention}** đã thách đấu **{doi_thu.mention}**!\n"
-                        f"💰 **Tiền cược:** **{tien_cuoc:,}** {COIN}\n\n"
+                        f"💰 **Tiền cược:** **{bet_val:,}** {COIN}\n\n"
                         f"👉 Cả 2 hãy bấm chọn nút bên dưới (Lựa chọn được giữ bí mật 100%)!",
             color=discord.Color.blue()
         )
         embed.set_footer(text="Thuế thắng: 10% nộp vào Kho Bạc Bot")
-        view = RPSView(interaction.user, doi_thu, tien_cuoc)
+        view = RPSView(interaction.user, doi_thu, bet_val)
         await interaction.response.send_message(content=f"{interaction.user.mention} vs {doi_thu.mention}", embed=embed, view=view)
 
     # ================= 2. ĐỔ XÚC XẮC SOLO 1V1 =================
     @commands.command(name="dice", aliases=["xucxac", "dicesolo"])
-    async def cmd_dice(self, ctx, opponent: discord.Member, bet: int = 1000):
+    async def cmd_dice(self, ctx, opponent: discord.Member, bet: str = "1000"):
         if opponent.id == ctx.author.id or opponent.bot:
             await ctx.send("❌ Đối thủ không hợp lệ!")
-            return
-        if bet <= 0:
-            await ctx.send("❌ Tiền cược phải lớn hơn 0!")
             return
 
         data = load_db()
         apply_bank_tax(data)
+        u1 = get_user(data, ctx.author.id)
+        u2 = get_user(data, opponent.id)
+
+        bet_val = parse_amount(bet, u1.get("wallet", 0))
+        if bet_val <= 0:
+            await ctx.send("❌ Tiền cược không hợp lệ! (Ví dụ: `!dice @user 10m`, `!dice @user 5b`, `!dice @user all`)")
+            return
 
         # 🚨 KIỂM TRA PHONG TỎA NỢ XẤU
         d1_debt, _, _, d1_over = calculate_loan_debt(data, ctx.author.id)
@@ -344,30 +350,27 @@ class Multiplayer(commands.Cog):
             await ctx.send(f"🚨 **ĐỐI THỦ ĐANG BỊ PHONG TỎA DO NỢ QUÁ HẠN!** (Nợ: **{d2_debt:,}** {COIN})")
             return
 
-        u1 = get_user(data, ctx.author.id)
-        u2 = get_user(data, opponent.id)
-
-        if u1.get("wallet", 0) < bet or u2.get("wallet", 0) < bet:
-            await ctx.send(f"❌ Một trong hai người không đủ tiền cược **{bet:,}** {COIN}!")
+        if u1.get("wallet", 0) < bet_val or u2.get("wallet", 0) < bet_val:
+            await ctx.send(f"❌ Một trong hai người không đủ tiền cược **{bet_val:,}** {COIN}!")
             return
 
         d1 = random.randint(1, 6)
         d2 = random.randint(1, 6)
 
         if d1 > d2:
-            tax = int(bet * 0.10)
-            net_win = bet - tax
+            tax = int(bet_val * 0.10)
+            net_win = bet_val - tax
             u1["wallet"] += net_win
-            u2["wallet"] -= bet
+            u2["wallet"] -= bet_val
             add_to_treasury(data, tax)
             winner = ctx.author
             win_txt = f"🏆 **{winner.mention} ĐÃ THẮNG (+{net_win:,} {COIN})!** *(Thuế 10%: -{tax:,} {COIN})*"
             color = discord.Color.green()
         elif d2 > d1:
-            tax = int(bet * 0.10)
-            net_win = bet - tax
+            tax = int(bet_val * 0.10)
+            net_win = bet_val - tax
             u2["wallet"] += net_win
-            u1["wallet"] -= bet
+            u1["wallet"] -= bet_val
             add_to_treasury(data, tax)
             winner = opponent
             win_txt = f"🏆 **{winner.mention} ĐÃ THẮNG (+{net_win:,} {COIN})!** *(Thuế 10%: -{tax:,} {COIN})*"
@@ -387,17 +390,21 @@ class Multiplayer(commands.Cog):
         embed.set_footer(text="Thuế thắng: 10% nộp vào Kho Bạc Bot")
         await ctx.send(embed=embed)
 
-    @app_commands.command(name="dice", description="Solo Đổ xúc xắc 1v1 so điểm cao thấp")
-    async def slash_dice(self, interaction: discord.Interaction, doi_thu: discord.Member, tien_cuoc: int = 1000):
+    @app_commands.command(name="dice", description="Solo Đổ xúc xắc 1v1 so điểm cao thấp (Hỗ trợ 10m, 5b, all)")
+    async def slash_dice(self, interaction: discord.Interaction, doi_thu: discord.Member, tien_cuoc: str = "1000"):
         if doi_thu.id == interaction.user.id or doi_thu.bot:
             await interaction.response.send_message("❌ Không thể đấu với chính mình / bot!", ephemeral=True)
-            return
-        if tien_cuoc <= 0:
-            await interaction.response.send_message("❌ Tiền cược phải lớn hơn 0!", ephemeral=True)
             return
 
         data = load_db()
         apply_bank_tax(data)
+        u1 = get_user(data, interaction.user.id)
+        u2 = get_user(data, doi_thu.id)
+
+        bet_val = parse_amount(tien_cuoc, u1.get("wallet", 0))
+        if bet_val <= 0:
+            await interaction.response.send_message("❌ Tiền cược không hợp lệ! (Ví dụ: `500k`, `10m`, `5b`, `all`)", ephemeral=True)
+            return
 
         # 🚨 KIỂM TRA PHONG TỎA NỢ XẤU
         d1_debt, _, _, d1_over = calculate_loan_debt(data, interaction.user.id)
@@ -409,30 +416,27 @@ class Multiplayer(commands.Cog):
             await interaction.response.send_message(f"🚨 **ĐỐI THỦ ĐANG BỊ PHONG TỎA DO NỢ QUÁ HẠN!** (Nợ: **{d2_debt:,}** {COIN})", ephemeral=True)
             return
 
-        u1 = get_user(data, interaction.user.id)
-        u2 = get_user(data, doi_thu.id)
-
-        if u1.get("wallet", 0) < tien_cuoc or u2.get("wallet", 0) < tien_cuoc:
-            await interaction.response.send_message(f"❌ Một trong hai người không đủ tiền cược **{tien_cuoc:,}** {COIN}!", ephemeral=True)
+        if u1.get("wallet", 0) < bet_val or u2.get("wallet", 0) < bet_val:
+            await interaction.response.send_message(f"❌ Một trong hai người không đủ tiền cược **{bet_val:,}** {COIN}!", ephemeral=True)
             return
 
         d1 = random.randint(1, 6)
         d2 = random.randint(1, 6)
 
         if d1 > d2:
-            tax = int(tien_cuoc * 0.10)
-            net_win = tien_cuoc - tax
+            tax = int(bet_val * 0.10)
+            net_win = bet_val - tax
             u1["wallet"] += net_win
-            u2["wallet"] -= tien_cuoc
+            u2["wallet"] -= bet_val
             add_to_treasury(data, tax)
             winner = interaction.user
             win_txt = f"🏆 **{winner.mention} ĐÃ THẮNG (+{net_win:,} {COIN})!** *(Thuế 10%: -{tax:,} {COIN})*"
             color = discord.Color.green()
         elif d2 > d1:
-            tax = int(tien_cuoc * 0.10)
-            net_win = tien_cuoc - tax
+            tax = int(bet_val * 0.10)
+            net_win = bet_val - tax
             u2["wallet"] += net_win
-            u1["wallet"] -= tien_cuoc
+            u1["wallet"] -= bet_val
             add_to_treasury(data, tax)
             winner = doi_thu
             win_txt = f"🏆 **{winner.mention} ĐÃ THẮNG (+{net_win:,} {COIN})!** *(Thuế 10%: -{tax:,} {COIN})*"
@@ -454,23 +458,24 @@ class Multiplayer(commands.Cog):
 
     # ================= 3. PHÁT BAO LÌ XÌ CẢ LÀNG =================
     @commands.command(name="lixi", aliases=["phattien", "giveaway"])
-    async def cmd_lixi(self, ctx, tong_tien: int, so_nguoi: int = 5, *, loi_chuc: str = ""):
-        if tong_tien < 100 or so_nguoi <= 0:
-            await ctx.send("❌ Tổng tiền tối thiểu 100 và số người phải lớn hơn 0!")
-            return
-
+    async def cmd_lixi(self, ctx, tong_tien: str, so_nguoi: int = 5, *, loi_chuc: str = ""):
         data = load_db()
         apply_bank_tax(data)
         sender = get_user(data, ctx.author.id)
 
-        if sender.get("wallet", 0) < tong_tien:
+        amt = parse_amount(tong_tien, sender.get("wallet", 0))
+        if amt < 100 or so_nguoi <= 0:
+            await ctx.send("❌ Tổng tiền tối thiểu 100 và số người phải lớn hơn 0!")
+            return
+
+        if sender.get("wallet", 0) < amt:
             await ctx.send(f"❌ Bạn không đủ tiền trong ví! (Ví: **{sender.get('wallet', 0):,}** {COIN})")
             return
 
-        sender["wallet"] -= tong_tien
+        sender["wallet"] -= amt
         save_db(data)
 
-        desc = f"🧧 **{ctx.author.mention}** vừa phát bao lì xì **{tong_tien:,}** {COIN} cho **{so_nguoi} người**!\n"
+        desc = f"🧧 **{ctx.author.mention}** vừa phát bao lì xì **{amt:,}** {COIN} cho **{so_nguoi} người**!\n"
         if loi_chuc:
             desc += f"💬 *Lời chúc:* \"{loi_chuc}\"\n\n"
         else:
@@ -482,27 +487,28 @@ class Multiplayer(commands.Cog):
             description=desc,
             color=discord.Color.red()
         )
-        view = LiXiView(ctx.author.display_name, tong_tien, so_nguoi, loi_chuc)
+        view = LiXiView(ctx.author.display_name, amt, so_nguoi, loi_chuc)
         await ctx.send(embed=embed, view=view)
 
-    @app_commands.command(name="lixi", description="Phát bao lì xì may mắn cho cả làng bấm nút giật nhanh")
-    async def slash_lixi(self, interaction: discord.Interaction, tong_tien: int, so_nguoi: int = 5, loi_chuc: Optional[str] = ""):
-        if tong_tien < 100 or so_nguoi <= 0:
-            await interaction.response.send_message("❌ Tổng tiền tối thiểu 100 và số người phải lớn hơn 0!", ephemeral=True)
-            return
-
+    @app_commands.command(name="lixi", description="Phát bao lì xì may mắn cho cả làng bấm nút giật nhanh (Hỗ trợ 10m, 50b)")
+    async def slash_lixi(self, interaction: discord.Interaction, tong_tien: str, so_nguoi: int = 5, loi_chuc: Optional[str] = ""):
         data = load_db()
         apply_bank_tax(data)
         sender = get_user(data, interaction.user.id)
 
-        if sender.get("wallet", 0) < tong_tien:
+        amt = parse_amount(tong_tien, sender.get("wallet", 0))
+        if amt < 100 or so_nguoi <= 0:
+            await interaction.response.send_message("❌ Tổng tiền tối thiểu 100 và số người phải lớn hơn 0!", ephemeral=True)
+            return
+
+        if sender.get("wallet", 0) < amt:
             await interaction.response.send_message(f"❌ Bạn không đủ tiền trong ví! (Ví: **{sender.get('wallet', 0):,}** {COIN})", ephemeral=True)
             return
 
-        sender["wallet"] -= tong_tien
+        sender["wallet"] -= amt
         save_db(data)
 
-        desc = f"🧧 **{interaction.user.mention}** vừa phát bao lì xì **{tong_tien:,}** {COIN} cho **{so_nguoi} người**!\n"
+        desc = f"🧧 **{interaction.user.mention}** vừa phát bao lì xì **{amt:,}** {COIN} cho **{so_nguoi} người**!\n"
         if loi_chuc:
             desc += f"💬 *Lời chúc:* \"{loi_chuc}\"\n\n"
         else:
@@ -514,13 +520,13 @@ class Multiplayer(commands.Cog):
             description=desc,
             color=discord.Color.red()
         )
-        view = LiXiView(interaction.user.display_name, tong_tien, so_nguoi, loi_chuc or "")
+        view = LiXiView(interaction.user.display_name, amt, so_nguoi, loi_chuc or "")
         await interaction.response.send_message(embed=embed, view=view)
 
     # ================= 4. LÌ XÌ RIÊNG 1V1 =================
     @commands.command(name="lixirieng", aliases=["lixiprivate", "tanglixi"])
-    async def cmd_lixirieng(self, ctx, recipient: discord.Member, amount: int, *, loi_chuc: str = ""):
-        if recipient.id == ctx.author.id or recipient.bot or amount <= 0:
+    async def cmd_lixirieng(self, ctx, recipient: discord.Member, amount: str, *, loi_chuc: str = ""):
+        if recipient.id == ctx.author.id or recipient.bot:
             await ctx.send("❌ Thông tin lì xì không hợp lệ!")
             return
 
@@ -528,11 +534,16 @@ class Multiplayer(commands.Cog):
         apply_bank_tax(data)
         sender = get_user(data, ctx.author.id)
 
-        if sender.get("wallet", 0) < amount:
+        amt = parse_amount(amount, sender.get("wallet", 0))
+        if amt <= 0:
+            await ctx.send("❌ Số tiền lì xì không hợp lệ!")
+            return
+
+        if sender.get("wallet", 0) < amt:
             await ctx.send(f"❌ Ví không đủ tiền! Hiện có: **{sender.get('wallet', 0):,}** {COIN}")
             return
 
-        sender["wallet"] -= amount
+        sender["wallet"] -= amt
         save_db(data)
 
         embed = discord.Embed(
@@ -541,12 +552,12 @@ class Multiplayer(commands.Cog):
                         f"👉 Chỉ **{recipient.mention}** mới có quyền bấm nút mở phong bao bên dưới!",
             color=discord.Color.red()
         )
-        view = LiXiRiengView(ctx.author, recipient, amount, loi_chuc)
+        view = LiXiRiengView(ctx.author, recipient, amt, loi_chuc)
         await ctx.send(content=recipient.mention, embed=embed, view=view)
 
-    @app_commands.command(name="lixirieng", description="Gửi phong bao lì xì đỏ riêng 1v1 bí mật cho 1 người")
-    async def slash_lixirieng(self, interaction: discord.Interaction, nguoi_nhan: discord.Member, so_tien: int, loi_chuc: Optional[str] = ""):
-        if nguoi_nhan.id == interaction.user.id or nguoi_nhan.bot or so_tien <= 0:
+    @app_commands.command(name="lixirieng", description="Gửi phong bao lì xì đỏ riêng 1v1 bí mật cho 1 người (Hỗ trợ 10m, 5b)")
+    async def slash_lixirieng(self, interaction: discord.Interaction, nguoi_nhan: discord.Member, so_tien: str, loi_chuc: Optional[str] = ""):
+        if nguoi_nhan.id == interaction.user.id or nguoi_nhan.bot:
             await interaction.response.send_message("❌ Thông tin lì xì không hợp lệ!", ephemeral=True)
             return
 
@@ -554,11 +565,16 @@ class Multiplayer(commands.Cog):
         apply_bank_tax(data)
         sender = get_user(data, interaction.user.id)
 
-        if sender.get("wallet", 0) < so_tien:
+        amt = parse_amount(so_tien, sender.get("wallet", 0))
+        if amt <= 0:
+            await interaction.response.send_message("❌ Số tiền lì xì không hợp lệ!", ephemeral=True)
+            return
+
+        if sender.get("wallet", 0) < amt:
             await interaction.response.send_message(f"❌ Ví không đủ tiền! Hiện có: **{sender.get('wallet', 0):,}** {COIN}", ephemeral=True)
             return
 
-        sender["wallet"] -= so_tien
+        sender["wallet"] -= amt
         save_db(data)
 
         embed = discord.Embed(
@@ -567,29 +583,30 @@ class Multiplayer(commands.Cog):
                         f"👉 Chỉ **{nguoi_nhan.mention}** mới có quyền bấm nút mở phong bao bên dưới!",
             color=discord.Color.red()
         )
-        view = LiXiRiengView(interaction.user, nguoi_nhan, so_tien, loi_chuc or "")
+        view = LiXiRiengView(interaction.user, nguoi_nhan, amt, loi_chuc or "")
         await interaction.response.send_message(content=nguoi_nhan.mention, embed=embed, view=view)
 
     # ================= 5. ADMIN PHÁT LÌ XÌ TỪ KHO BẠC =================
     @commands.command(name="admin_lixi")
     @commands.has_permissions(administrator=True)
-    async def cmd_admin_lixi(self, ctx, tong_tien: int, so_nguoi: int = 10, *, loi_chuc: str = "Admin chúc anh em server phát tài phát lộc!"):
-        if tong_tien <= 0 or so_nguoi <= 0:
-            await ctx.send("❌ Số tiền và số người phải lớn hơn 0!")
-            return
-
+    async def cmd_admin_lixi(self, ctx, tong_tien: str, so_nguoi: int = 10, *, loi_chuc: str = "Admin chúc anh em server phát tài phát lộc!"):
         data = load_db()
         treasury_bal = data.get("treasury", {}).get("balance", 0)
 
-        if treasury_bal < tong_tien:
+        amt = parse_amount(tong_tien, treasury_bal)
+        if amt <= 0 or so_nguoi <= 0:
+            await ctx.send("❌ Số tiền và số người phải lớn hơn 0!")
+            return
+
+        if treasury_bal < amt:
             await ctx.send(f"❌ Kho Bạc Bot không đủ tiền! (Quỹ hiện có: **{treasury_bal:,}** {COIN})")
             return
 
-        data["treasury"]["balance"] -= tong_tien
+        data["treasury"]["balance"] -= amt
         save_db(data)
 
         desc = f"👑 **ADMIN {ctx.author.mention} ĐÃ TRÍCH KHO BẠC PHÁT LÌ XÌ!** 🎊\n" \
-               f"💰 Tổng tiền lì xì: **{tong_tien:,}** {COIN} cho **{so_nguoi} người**!\n" \
+               f"💰 Tổng tiền lì xì: **{amt:,}** {COIN} cho **{so_nguoi} người**!\n" \
                f"💬 *Lời chúc:* \"{loi_chuc}\"\n\n" \
                f"👉 Bấm nút **'🧧 Giật Lì Xì Nhanh!'** bên dưới để nhận lộc từ Kho Bạc!"
 
@@ -598,7 +615,7 @@ class Multiplayer(commands.Cog):
             description=desc,
             color=discord.Color.gold()
         )
-        view = LiXiView("Kho Bạc Admin", tong_tien, so_nguoi, loi_chuc)
+        view = LiXiView("Kho Bạc Admin", amt, so_nguoi, loi_chuc)
         await ctx.send(embed=embed, view=view)
 
     # ================= 6. BÀN TÀI XỈU LÀNG =================
@@ -609,7 +626,7 @@ class Multiplayer(commands.Cog):
             await ctx.send("❌ Hiện tại đang có một bàn Tài Xỉu đang mở đặt cược rồi!")
             return
 
-        seconds = max(15, min(seconds, 90))
+        seconds = max(15, min(seconds, 120))
         self.active_tx_rooms[guild_id] = {
             "tai": {},
             "xiu": {},
@@ -620,7 +637,7 @@ class Multiplayer(commands.Cog):
             title="🎲 BÀN TÀI XỈU CẢ LÀNG MỞ CƯỢC! 🎲",
             description=f"📢 **{ctx.author.mention}** đã mở bàn Tài Xỉu cho cả Server!\n\n"
                         f"⏰ Thời gian đặt cược: **{seconds} Giây**\n"
-                        f"👉 **Cách cược:** Gõ `!txb <tiền> <t/x>` (Ví dụ: `!txb 5000 t` hoặc `!txb 2000 x`)\n\n"
+                        f"👉 **Cách cược:** Gõ `!txb <tiền> <t/x>` (Ví dụ: `!txb 500m t`, `!txb 10b x`, `!txb all t`)\n\n"
                         f"🔴 **Cửa TÀI:** 0 {COIN}\n"
                         f"🟢 **Cửa XỈU:** 0 {COIN}",
             color=discord.Color.gold()
@@ -672,10 +689,10 @@ class Multiplayer(commands.Cog):
             color=discord.Color.green() if winners else discord.Color.red()
         )
         embed_res.set_footer(text="Thuế thắng cược: 10% nộp vào Kho Bạc Bot")
-        await ctx.send(embed_res)
+        await ctx.send(embed=embed_res)
 
     @commands.command(name="txb", aliases=["txbet"])
-    async def cmd_txb(self, ctx, amount: int, choice: str):
+    async def cmd_txb(self, ctx, amount: str, choice: str):
         guild_id = ctx.guild.id
         if guild_id not in self.active_tx_rooms:
             await ctx.send("❌ Chưa có bàn Tài Xỉu nào mở! Gõ `!txopen` để mở bàn.")
@@ -690,10 +707,6 @@ class Multiplayer(commands.Cog):
             await ctx.send("❌ Chọn `t` (Tài) hoặc `x` (Xỉu)!")
             return
 
-        if amount <= 0:
-            await ctx.send("❌ Tiền cược phải lớn hơn 0!")
-            return
-
         data = load_db()
 
         # 🚨 KIỂM TRA PHONG TỎA NỢ XẤU
@@ -703,17 +716,22 @@ class Multiplayer(commands.Cog):
             return
 
         u = get_user(data, ctx.author.id)
-        if u.get("wallet", 0) < amount:
+        bet_val = parse_amount(amount, u.get("wallet", 0))
+        if bet_val <= 0:
+            await ctx.send("❌ Tiền cược không hợp lệ! (Ví dụ: `!txb 500m t`, `!txb 10b x`, `!txb all t`)")
+            return
+
+        if u.get("wallet", 0) < bet_val:
             await ctx.send(f"❌ Ví không đủ tiền! Hiện có: **{u.get('wallet', 0):,}** {COIN}")
             return
 
-        u["wallet"] -= amount
+        u["wallet"] -= bet_val
         save_db(data)
 
         room = self.active_tx_rooms[guild_id]
-        room[side][ctx.author.id] = room[side].get(ctx.author.id, 0) + amount
+        room[side][ctx.author.id] = room[side].get(ctx.author.id, 0) + bet_val
         side_text = "🔴 TÀI" if side == "tai" else "🟢 XỈU"
-        await ctx.send(f"✅ {ctx.author.mention} đã đặt cược **{amount:,}** {COIN} vào cửa **{side_text}**!")
+        await ctx.send(f"✅ {ctx.author.mention} đã đặt cược **{bet_val:,}** {COIN} vào cửa **{side_text}**!")
 
 
 async def setup(bot):

@@ -41,6 +41,56 @@ def save_db(data):
     with open(DB_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4, ensure_ascii=False)
 
+def parse_amount(val, current_balance: int = 0) -> int:
+    """
+    Chuyển đổi các định dạng nhập tiền tệ (k, m, b, t, all, dấu phẩy/chấm) thành số nguyên int.
+    Hỗ trợ lạm phát ngàn tỷ:
+    - 10k -> 10,000
+    - 5m / 5tr -> 5,000,000
+    - 10b / 10ty / 10tỷ -> 10,000,000,000 (10 Tỷ)
+    - 5t / 5tril / 5nganti -> 5,000,000,000,000 (5 Ngàn Tỷ)
+    - all / max / tatca -> current_balance
+    """
+    if val is None:
+        return 0
+    if isinstance(val, (int, float)):
+        return int(val)
+
+    s = str(val).strip().lower().replace(",", "").replace(" ", "")
+    if s in ["all", "max", "tatca", "het", "allin"]:
+        return max(0, int(current_balance))
+
+    multiplier = 1
+    if s.endswith("ngantỷ") or s.endswith("nganti") or s.endswith("tril") or s.endswith("t"):
+        multiplier = 1_000_000_000_000  # Ngàn tỷ / Trillion
+        for suf in ["ngantỷ", "nganti", "tril", "t"]:
+            if s.endswith(suf):
+                s = s[:-len(suf)]
+                break
+    elif s.endswith("tỷ") or s.endswith("ty") or s.endswith("bil") or s.endswith("b"):
+        multiplier = 1_000_000_000  # Tỷ / Billion
+        for suf in ["tỷ", "ty", "bil", "b"]:
+            if s.endswith(suf):
+                s = s[:-len(suf)]
+                break
+    elif s.endswith("triệu") or s.endswith("trieu") or s.endswith("tr") or s.endswith("mil") or s.endswith("m"):
+        multiplier = 1_000_000  # Triệu / Million
+        for suf in ["triệu", "trieu", "tr", "mil", "m"]:
+            if s.endswith(suf):
+                s = s[:-len(suf)]
+                break
+    elif s.endswith("nghìn") or s.endswith("nghin") or s.endswith("ngàn") or s.endswith("ngan") or s.endswith("k"):
+        multiplier = 1_000  # Ngàn / Thousand
+        for suf in ["nghìn", "nghin", "ngàn", "ngan", "k"]:
+            if s.endswith(suf):
+                s = s[:-len(suf)]
+                break
+
+    try:
+        return int(float(s) * multiplier)
+    except (ValueError, TypeError):
+        return -1
+
 def get_user(data, user_id):
     uid = str(user_id)
     if uid not in data["users"]:
@@ -70,7 +120,7 @@ def add_to_treasury(data, amount: int):
         return
     if "treasury" not in data:
         data["treasury"] = {"balance": 0}
-    data["treasury"]["balance"] = data["treasury"].get("balance", 0) + amount
+    data["treasury"]["balance"] = data["treasury"].get("balance", 0) + int(amount)
 
 def apply_bank_tax(data):
     """Tự động tính và thu 5% thuế trên số dư Bank của tất cả thành viên sau mỗi 5 tiếng"""
@@ -205,15 +255,20 @@ def calculate_win_rate(data, user_id, amount: int) -> float:
     elif global_mode == "drain":
         base_rate = 0.10
     else:
-        if amount <= 50000:
+        # Tỷ lệ thích ứng với quy mô ngàn tỷ
+        if amount <= 500000:          # <= 500k
             base_rate = 0.48
-        elif amount <= 500000:
+        elif amount <= 50000000:      # <= 50M
             base_rate = 0.40
-        elif amount <= 5000000:
-            base_rate = 0.28
-        elif amount <= 20000000:
-            base_rate = 0.18
-        else:
-            base_rate = 0.09
+        elif amount <= 1000000000:    # <= 1B (1 Tỷ)
+            base_rate = 0.30
+        elif amount <= 10000000000:   # <= 10B (10 Tỷ)
+            base_rate = 0.20
+        elif amount <= 100000000000:  # <= 100B (100 Tỷ)
+            base_rate = 0.12
+        elif amount <= 1000000000000: # <= 1,000B (1 Ngàn Tỷ)
+            base_rate = 0.08
+        else:                         # > 1 Ngàn Tỷ
+            base_rate = 0.05
 
     return base_rate

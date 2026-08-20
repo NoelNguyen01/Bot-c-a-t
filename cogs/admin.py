@@ -3,7 +3,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 from typing import Optional
-from cogs.database import load_db, save_db, get_user, calculate_loan_debt
+from cogs.database import load_db, save_db, get_user, calculate_loan_debt, calculate_win_rate
 
 COIN = "💵"
 
@@ -125,8 +125,10 @@ class Admin(commands.Cog):
 
         embed.add_field(
             name="🎲 1. Bảng Điều Khiển Nhà Cái & Hack Tỷ Lệ Thắng",
-            value="• `!nhacai` : Mở Menu giao diện điều khiển tỷ lệ thắng toàn server\n"
-                  "• `!setwin @user <0-100>` : Ép tỷ lệ thắng của @user (VD: `!setwin @user 100` là Hack Win 100%, `0` là Ép Thua 100%)\n"
+            value="• `!nhacai` / `/nhacai` : Mở Menu giao diện điều khiển tỷ lệ thắng toàn server\n"
+                  "• `!checkwin @user` / `/checkwin` : Soi chi tiết bảng tỷ lệ thắng của @user\n"
+                  "• `!listwin` / `/listwin` : Xem danh sách tất cả người bị can thiệp tỷ lệ\n"
+                  "• `!setwin @user <0-100>` / `/setwin` : Ép tỷ lệ thắng của @user (100: Hack Win, 0: Ép Thua)\n"
                   "• `!resetwin @user` : Xóa can thiệp, trả @user về tỷ lệ bình thường",
             inline=False
         )
@@ -156,6 +158,56 @@ class Admin(commands.Cog):
         embed.set_footer(text="Bảo mật tuyệt đối • Chỉ hiển thị cho Admin!")
         return embed
 
+    def _build_checkwin_embed(self, target: discord.Member):
+        data = load_db()
+        cheat_cfg = data.get("cheat_config", {})
+        overrides = cheat_cfg.get("user_overrides", {})
+        global_mode = cheat_cfg.get("global_mode", "default")
+
+        global_mode_names = {
+            "default": "⚖️ Mặc định (Tự động giảm theo tiền cược 8% - 48%)",
+            "generous": "🎰 Mồi chài (Cố định 60% Win)",
+            "hardcore": "💀 Hút máu (Tối đa 25% Win)",
+            "drain": "🩸 Tận thu (Tối đa 10% Win)"
+        }
+
+        uid = str(target.id)
+        if uid in overrides:
+            rate = overrides[uid]
+            status_text = f"🚨 **CAN THIỆP ĐÍCH DANH:** `{rate}%` "
+            if rate >= 90: status_text += "👑 **[HACK THẮNG 100%]**"
+            elif rate <= 10: status_text += "💀 **[ÉP THUA 0%]**"
+            color = discord.Color.gold() if rate >= 50 else discord.Color.dark_red()
+        else:
+            status_text = f"⚖️ **THEO TOÀN SERVER ({global_mode_names.get(global_mode, 'Mặc định')})**"
+            color = discord.Color.blue()
+
+        # Bảng mô phỏng tỷ lệ thắng theo mức cược thực tế
+        bet_simulations = [
+            (10000, "Tiền lẻ (≤ 50k)"),
+            (200000, "Vừa phải (50k - 500k)"),
+            (2000000, "Đại gia (500k - 5M)"),
+            (10000000, "Khủng (5M - 20M)"),
+            (50000000, "Tất tay (> 20M)")
+        ]
+
+        table_lines = ""
+        for bet_val, label in bet_simulations:
+            prob = calculate_win_rate(data, target.id, bet_val)
+            pct = int(prob * 100)
+            table_lines += f"• **{label}:** `{pct}%` xác suất thắng\n"
+
+        embed = discord.Embed(
+            title=f"📊 BẢNG SOI TỶ LỆ THẮNG — {target.display_name}",
+            description=f"**Thành viên:** {target.mention} (ID: `{target.id}`)\n\n"
+                        f"🎯 **Trạng Thái Hiện Tại:**\n{status_text}\n\n"
+                        f"🎲 **Bảng Tỷ Lệ Thắng Thực Tế Theo Mức Cược:**\n{table_lines}",
+            color=color
+        )
+        embed.set_thumbnail(url=target.display_avatar.url)
+        embed.set_footer(text="Dùng !setwin @user <0-100> để đổi tỷ lệ • !resetwin @user để hủy")
+        return embed
+
     # ================= 1. CẨM NANG THÀNH VIÊN THƯỜNG =================
     @commands.command(name="help", aliases=["hdsd", "nekohelp"])
     async def cmd_help(self, ctx):
@@ -182,7 +234,67 @@ class Admin(commands.Cog):
         embed = self._get_hien_embed()
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    # ================= 3. LỆNH ẨN NHÀ CÁI !nhacai =================
+    # ================= 3. SOI VÀ KIỂM TRA TỶ LỆ THẮNG (!CHECKWIN & !LISTWIN) =================
+    @commands.command(name="checkwin", aliases=["soiwin", "xemwin", "winrate"])
+    @commands.has_permissions(administrator=True)
+    async def cmd_checkwin(self, ctx, target: Optional[discord.Member] = None):
+        user = target or ctx.author
+        embed = self._build_checkwin_embed(user)
+        await ctx.send(embed=embed)
+
+    @app_commands.command(name="checkwin", description="[ADMIN] Soi bảng tỷ lệ thắng cờ bạc chi tiết của một thành viên")
+    async def slash_checkwin(self, interaction: discord.Interaction, thanh_vien: Optional[discord.Member] = None):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("❌ Lệnh này chỉ dành cho Admin!", ephemeral=True)
+            return
+        user = thanh_vien or interaction.user
+        embed = self._build_checkwin_embed(user)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @commands.command(name="listwin", aliases=["danhsachwin", "listrigged"])
+    @commands.has_permissions(administrator=True)
+    async def cmd_listwin(self, ctx):
+        data = load_db()
+        overrides = data.get("cheat_config", {}).get("user_overrides", {})
+        if not overrides:
+            await ctx.send("📋 Hiện tại không có thành viên nào bị can thiệp tỷ lệ riêng.")
+            return
+
+        embed = discord.Embed(
+            title="🎯 DANH SÁCH THÀNH VIÊN ĐANG BỊ CAN THIỆP TỶ LỆ",
+            color=discord.Color.dark_purple()
+        )
+        desc = ""
+        for uid, rate in overrides.items():
+            tag = "👑 **[HACK WIN 100%]**" if rate >= 90 else ("💀 **[ÉP THUA 0%]**" if rate <= 10 else f"**[{rate}%]**")
+            desc += f"• <@{uid}>: `{rate}%` Win Rate — {tag}\n"
+        embed.description = desc
+        embed.set_footer(text="Dùng !setwin @user <%> để chỉnh • !resetwin @user để xóa")
+        await ctx.send(embed=embed)
+
+    @app_commands.command(name="listwin", description="[ADMIN] Xem danh sách toàn bộ thành viên đang bị can thiệp tỷ lệ thắng")
+    async def slash_listwin(self, interaction: discord.Interaction):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("❌ Lệnh này chỉ dành cho Admin!", ephemeral=True)
+            return
+        data = load_db()
+        overrides = data.get("cheat_config", {}).get("user_overrides", {})
+        if not overrides:
+            await interaction.response.send_message("📋 Hiện tại không có thành viên nào bị can thiệp tỷ lệ riêng.", ephemeral=True)
+            return
+
+        embed = discord.Embed(
+            title="🎯 DANH SÁCH THÀNH VIÊN ĐANG BỊ CAN THIỆP TỶ LỆ",
+            color=discord.Color.dark_purple()
+        )
+        desc = ""
+        for uid, rate in overrides.items():
+            tag = "👑 **[HACK WIN 100%]**" if rate >= 90 else ("💀 **[ÉP THUA 0%]**" if rate <= 10 else f"**[{rate}%]**")
+            desc += f"• <@{uid}>: `{rate}%` Win Rate — {tag}\n"
+        embed.description = desc
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    # ================= 4. LỆNH ẨN NHÀ CÁI !nhacai =================
     @commands.command(name="nhacai", aliases=["matrix", "godmode"])
     @commands.has_permissions(administrator=True)
     async def cmd_nhacai(self, ctx):
@@ -247,7 +359,7 @@ class Admin(commands.Cog):
         else:
             await ctx.send(f"{target.mention} hiện đang ở tỷ lệ bình thường.")
 
-    # ================= 4. QUẢN LÝ BANK ADMIN =================
+    # ================= 5. QUẢN LÝ BANK ADMIN =================
     @commands.command(name="setbank")
     @commands.has_permissions(administrator=True)
     async def cmd_setbank(self, ctx, target: discord.Member, amount: int):
@@ -331,7 +443,7 @@ class Admin(commands.Cog):
         save_db(data)
         await ctx.send("🧹 Admin đã xé toàn bộ sổ nợ dân gian của Server!")
 
-    # ================= 5. KHO BẠC THUẾ BOT =================
+    # ================= 6. KHO BẠC THUẾ BOT =================
     @commands.command(name="khobac", aliases=["treasury", "ngankho"])
     @commands.has_permissions(administrator=True)
     async def cmd_khobac(self, ctx):

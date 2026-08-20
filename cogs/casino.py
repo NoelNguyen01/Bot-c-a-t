@@ -4,7 +4,7 @@ from discord.ext import commands
 from discord import app_commands
 import random
 from typing import Optional
-from cogs.database import load_db, save_db, get_user, add_to_treasury, calculate_win_rate, apply_bank_tax
+from cogs.database import load_db, save_db, get_user, add_to_treasury, calculate_win_rate, apply_bank_tax, calculate_loan_debt
 
 COIN = "💵"
 
@@ -39,6 +39,10 @@ def record_game(u: dict, won: bool, profit: int):
     if won:
         u["casino_wins"] = u.get("casino_wins", 0) + 1
     u["casino_profit"] = u.get("casino_profit", 0) + profit
+
+def check_casino_lockout(data, user_id) -> tuple[bool, int]:
+    total_debt, principal, interest, is_overdue = calculate_loan_debt(data, user_id)
+    return is_overdue, total_debt
 
 
 # ================= 1. VIEW XÌ DÁCH BLACKJACK =================
@@ -188,8 +192,16 @@ class Casino(commands.Cog):
 
         data = load_db()
         apply_bank_tax(data)
-        u = get_user(data, ctx.author.id)
 
+        # 🚨 KIỂM TRA PHONG TỎA DO NỢ XẤU
+        is_locked, tot_debt = check_casino_lockout(data, ctx.author.id)
+        if is_locked:
+            await ctx.send(f"🚨 **TÀI KHOẢN SÒNG BẠC ĐÃ BỊ PHONG TỎA!**\n"
+                           f"💀 Bạn đang có khoản nợ quá hạn tại Ngân Hàng: **{tot_debt:,}** {COIN}!\n"
+                           f"👉 Bắt buộc phải đi làm (`!work`, `!daily`, `!laodong`) để trả nợ (`!trano`) mới được mở lại sòng bạc!")
+            return
+
+        u = get_user(data, ctx.author.id)
         if u.get("wallet", 0) < amount:
             await ctx.send(f"❌ Bạn không đủ tiền trong ví! (Ví: **{u.get('wallet', 0):,}** {COIN})")
             return
@@ -266,8 +278,19 @@ class Casino(commands.Cog):
 
         data = load_db()
         apply_bank_tax(data)
-        u = get_user(data, interaction.user.id)
 
+        # 🚨 KIỂM TRA PHONG TỎA DO NỢ XẤU
+        is_locked, tot_debt = check_casino_lockout(data, interaction.user.id)
+        if is_locked:
+            await interaction.response.send_message(
+                f"🚨 **TÀI KHOẢN SÒNG BẠC ĐÃ BỊ PHONG TỎA!**\n"
+                f"💀 Bạn đang có khoản nợ quá hạn tại Ngân Hàng: **{tot_debt:,}** {COIN}!\n"
+                f"👉 Bắt buộc phải đi làm (`/work`, `/daily`, `/laodong`) để trả nợ (`/trano`) mới được mở lại sòng bạc!",
+                ephemeral=True
+            )
+            return
+
+        u = get_user(data, interaction.user.id)
         if u.get("wallet", 0) < tien_cuoc:
             await interaction.response.send_message(f"❌ Ví không đủ tiền! Hiện có: **{u.get('wallet', 0):,}** {COIN}", ephemeral=True)
             return
@@ -342,8 +365,16 @@ class Casino(commands.Cog):
 
         data = load_db()
         apply_bank_tax(data)
-        u = get_user(data, ctx.author.id)
 
+        # 🚨 KIỂM TRA PHONG TỎA DO NỢ XẤU
+        is_locked, tot_debt = check_casino_lockout(data, ctx.author.id)
+        if is_locked:
+            await ctx.send(f"🚨 **TÀI KHOẢN SÒNG BẠC ĐÃ BỊ PHONG TỎA!**\n"
+                           f"💀 Bạn đang có khoản nợ quá hạn tại Ngân Hàng: **{tot_debt:,}** {COIN}!\n"
+                           f"👉 Bắt buộc phải đi làm (`!work`, `!daily`, `!laodong`) để trả nợ (`!trano`) mới được mở lại sòng bạc!")
+            return
+
+        u = get_user(data, ctx.author.id)
         if u.get("wallet", 0) < amount:
             await ctx.send(f"❌ Bạn không đủ tiền trong ví! (Ví: **{u.get('wallet', 0):,}** {COIN})")
             return
@@ -382,8 +413,19 @@ class Casino(commands.Cog):
 
         data = load_db()
         apply_bank_tax(data)
-        u = get_user(data, interaction.user.id)
 
+        # 🚨 KIỂM TRA PHONG TỎA DO NỢ XẤU
+        is_locked, tot_debt = check_casino_lockout(data, interaction.user.id)
+        if is_locked:
+            await interaction.response.send_message(
+                f"🚨 **TÀI KHOẢN SÒNG BẠC ĐÃ BỊ PHONG TỎA!**\n"
+                f"💀 Bạn đang có khoản nợ quá hạn tại Ngân Hàng: **{tot_debt:,}** {COIN}!\n"
+                f"👉 Bắt buộc phải đi làm (`/work`, `/daily`, `/laodong`) để trả nợ (`/trano`) mới được mở lại sòng bạc!",
+                ephemeral=True
+            )
+            return
+
+        u = get_user(data, interaction.user.id)
         if u.get("wallet", 0) < tien_cuoc:
             await interaction.response.send_message(f"❌ Ví không đủ tiền! Hiện có: **{u.get('wallet', 0):,}** {COIN}", ephemeral=True)
             return
@@ -432,8 +474,16 @@ class Casino(commands.Cog):
 
         data = load_db()
         apply_bank_tax(data)
-        u = get_user(data, ctx.author.id)
 
+        # 🚨 KIỂM TRA PHONG TỎA DO NỢ XẤU
+        is_locked, tot_debt = check_casino_lockout(data, ctx.author.id)
+        if is_locked:
+            await ctx.send(f"🚨 **TÀI KHOẢN SÒNG BẠC ĐÃ BỊ PHONG TỎA!**\n"
+                           f"💀 Bạn đang có khoản nợ quá hạn tại Ngân Hàng: **{tot_debt:,}** {COIN}!\n"
+                           f"👉 Bắt buộc phải đi làm (`!work`, `!daily`, `!laodong`) để trả nợ (`!trano`) mới được mở lại sòng bạc!")
+            return
+
+        u = get_user(data, ctx.author.id)
         if u.get("wallet", 0) < amount:
             await ctx.send(f"❌ Bạn không đủ tiền trong ví! (Ví: **{u.get('wallet', 0):,}** {COIN})")
             return
@@ -478,8 +528,19 @@ class Casino(commands.Cog):
 
         data = load_db()
         apply_bank_tax(data)
-        u = get_user(data, interaction.user.id)
 
+        # 🚨 KIỂM TRA PHONG TỎA DO NỢ XẤU
+        is_locked, tot_debt = check_casino_lockout(data, interaction.user.id)
+        if is_locked:
+            await interaction.response.send_message(
+                f"🚨 **TÀI KHOẢN SÒNG BẠC ĐÃ BỊ PHONG TỎA!**\n"
+                f"💀 Bạn đang có khoản nợ quá hạn tại Ngân Hàng: **{tot_debt:,}** {COIN}!\n"
+                f"👉 Bắt buộc phải đi làm (`/work`, `/daily`, `/laodong`) để trả nợ (`/trano`) mới được mở lại sòng bạc!",
+                ephemeral=True
+            )
+            return
+
+        u = get_user(data, interaction.user.id)
         if u.get("wallet", 0) < tien_cuoc:
             await interaction.response.send_message(f"❌ Ví không đủ tiền! Hiện có: **{u.get('wallet', 0):,}** {COIN}", ephemeral=True)
             return
@@ -521,8 +582,16 @@ class Casino(commands.Cog):
 
         data = load_db()
         apply_bank_tax(data)
-        u = get_user(data, ctx.author.id)
 
+        # 🚨 KIỂM TRA PHONG TỎA DO NỢ XẤU
+        is_locked, tot_debt = check_casino_lockout(data, ctx.author.id)
+        if is_locked:
+            await ctx.send(f"🚨 **TÀI KHOẢN SÒNG BẠC ĐÃ BỊ PHONG TỎA!**\n"
+                           f"💀 Bạn đang có khoản nợ quá hạn tại Ngân Hàng: **{tot_debt:,}** {COIN}!\n"
+                           f"👉 Bắt buộc phải đi làm (`!work`, `!daily`, `!laodong`) để trả nợ (`!trano`) mới được mở lại sòng bạc!")
+            return
+
+        u = get_user(data, ctx.author.id)
         if u.get("wallet", 0) < amount:
             await ctx.send(f"❌ Bạn không đủ tiền trong ví! (Ví: **{u.get('wallet', 0):,}** {COIN})")
             return
@@ -587,8 +656,19 @@ class Casino(commands.Cog):
 
         data = load_db()
         apply_bank_tax(data)
-        u = get_user(data, interaction.user.id)
 
+        # 🚨 KIỂM TRA PHONG TỎA DO NỢ XẤU
+        is_locked, tot_debt = check_casino_lockout(data, interaction.user.id)
+        if is_locked:
+            await interaction.response.send_message(
+                f"🚨 **TÀI KHOẢN SÒNG BẠC ĐÃ BỊ PHONG TỎA!**\n"
+                f"💀 Bạn đang có khoản nợ quá hạn tại Ngân Hàng: **{tot_debt:,}** {COIN}!\n"
+                f"👉 Bắt buộc phải đi làm (`/work`, `/daily`, `/laodong`) để trả nợ (`/trano`) mới được mở lại sòng bạc!",
+                ephemeral=True
+            )
+            return
+
+        u = get_user(data, interaction.user.id)
         if u.get("wallet", 0) < tien_cuoc:
             await interaction.response.send_message(f"❌ Ví không đủ tiền! Hiện có: **{u.get('wallet', 0):,}** {COIN}", ephemeral=True)
             return
@@ -666,8 +746,16 @@ class Casino(commands.Cog):
 
         data = load_db()
         apply_bank_tax(data)
-        u = get_user(data, ctx.author.id)
 
+        # 🚨 KIỂM TRA PHONG TỎA DO NỢ XẤU
+        is_locked, tot_debt = check_casino_lockout(data, ctx.author.id)
+        if is_locked:
+            await ctx.send(f"🚨 **TÀI KHOẢN SÒNG BẠC ĐÃ BỊ PHONG TỎA!**\n"
+                           f"💀 Bạn đang có khoản nợ quá hạn tại Ngân Hàng: **{tot_debt:,}** {COIN}!\n"
+                           f"👉 Bắt buộc phải đi làm (`!work`, `!daily`, `!laodong`) để trả nợ (`!trano`) mới được mở lại sòng bạc!")
+            return
+
+        u = get_user(data, ctx.author.id)
         if u.get("wallet", 0) < amount:
             await ctx.send(f"❌ Ví không đủ tiền! (Ví: **{u.get('wallet', 0):,}** {COIN})")
             return
@@ -734,8 +822,19 @@ class Casino(commands.Cog):
 
         data = load_db()
         apply_bank_tax(data)
-        u = get_user(data, interaction.user.id)
 
+        # 🚨 KIỂM TRA PHONG TỎA DO NỢ XẤU
+        is_locked, tot_debt = check_casino_lockout(data, interaction.user.id)
+        if is_locked:
+            await interaction.response.send_message(
+                f"🚨 **TÀI KHOẢN SÒNG BẠC ĐÃ BỊ PHONG TỎA!**\n"
+                f"💀 Bạn đang có khoản nợ quá hạn tại Ngân Hàng: **{tot_debt:,}** {COIN}!\n"
+                f"👉 Bắt buộc phải đi làm (`/work`, `/daily`, `/laodong`) để trả nợ (`/trano`) mới được mở lại sòng bạc!",
+                ephemeral=True
+            )
+            return
+
+        u = get_user(data, interaction.user.id)
         if u.get("wallet", 0) < tien_cuoc:
             await interaction.response.send_message(f"❌ Ví không đủ tiền! Hiện có: **{u.get('wallet', 0):,}** {COIN}", ephemeral=True)
             return

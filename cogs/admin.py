@@ -74,6 +74,7 @@ class Admin(commands.Cog):
                   "• `!with <tiền>` / `/with` : Rút tiền ra ví\n"
                   "• `!vay <tiền>` / `/vay` : Vay ngân hàng (Tối đa 30M - 100M, lãi 2%/phút)\n"
                   "• `!trano <tiền>` / `/trano` : Trả nợ ngân hàng\n"
+                  "• `!laodong` / `/laodong` : Lao động công ích chuộc nợ (-1M đến -3M nợ/lần, 15p)\n"
                   "• `!topno` / `/topno` : Bảng phong thần Chúa Chổm ngập nợ\n"
                   "• `!daily` / `/daily` : Điểm danh nhận tiền hằng ngày + streak\n"
                   "• `!work` / `/work` : Đi làm kiếm lương mỗi 30 phút\n"
@@ -98,7 +99,8 @@ class Admin(commands.Cog):
                   "• `!cf <tiền> <s/n>` / `/coinflip` : Tung đồng xu may rủi Sấp/Ngửa\n"
                   "• `!slot <tiền>` / `/slots` : Quay hũ máy xèng hoa quả trúng Jackpot\n"
                   "• `!baucua <tiền> <con>` / `/baucua` : Bầu cua tôm cá (bau, cua, tom, ca, ga, nai)\n"
-                  "*(Tất cả ván thắng cờ bạc chịu 10% thuế nộp Kho Bạc Bot)*",
+                  "• `!topwin` / `/topwin` : Bảng Phong Thần Thần Bài (Top Tỷ Lệ Thắng)\n"
+                  "*(Tất cả ván thắng cờ bạc chịu 10% thuế • Nợ ngân hàng quá hạn sẽ bị phong tỏa Casino)*",
             inline=False
         )
 

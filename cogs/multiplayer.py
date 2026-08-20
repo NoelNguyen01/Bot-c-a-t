@@ -6,7 +6,7 @@ import random
 import asyncio
 import time
 from typing import Optional
-from cogs.database import load_db, save_db, get_user, add_to_treasury, apply_bank_tax
+from cogs.database import load_db, save_db, get_user, add_to_treasury, apply_bank_tax, calculate_loan_debt, deduct_loan_debt
 
 COIN = "💵"
 
@@ -136,11 +136,23 @@ class LiXiView(discord.ui.View):
             self.claimed_users[interaction.user.id] = amount
 
             data = load_db()
+            debt_msg = ""
+            total_debt, principal, interest, is_overdue = calculate_loan_debt(data, interaction.user.id)
+            actual_received = amount
+            if total_debt > 0:
+                seize = int(amount * 0.5)
+                paid, rem_debt, cleared = deduct_loan_debt(data, interaction.user.id, seize)
+                actual_received -= paid
+                if cleared:
+                    debt_msg = f" *(Đã trích -{paid:,} {COIN} trả sạch hết nợ ngân hàng!)*"
+                else:
+                    debt_msg = f" *(Đã trích -{paid:,} {COIN} trả nợ, nợ còn: {rem_debt:,} {COIN})*"
+
             u = get_user(data, interaction.user.id)
-            u["wallet"] = u.get("wallet", 0) + amount
+            u["wallet"] = u.get("wallet", 0) + actual_received
             save_db(data)
 
-            await interaction.response.send_message(f"🎉 Bạn giật được **+{amount:,}** {COIN} từ bao lì xì của {self.sender_name}!", ephemeral=True)
+            await interaction.response.send_message(f"🎉 Bạn giật được **+{amount:,}** {COIN} từ bao lì xì của {self.sender_name}! (Thực nhận: **+{actual_received:,}** {COIN}){debt_msg}", ephemeral=True)
 
             desc = f"🧧 **{self.sender_name}** vừa phát bao lì xì **{self.total_money:,}** {COIN} cho **{self.total_slots} người**!\n"
             if self.wish:
@@ -191,14 +203,26 @@ class LiXiRiengView(discord.ui.View):
             child.disabled = True
 
         data = load_db()
+        debt_msg = ""
+        total_debt, principal, interest, is_overdue = calculate_loan_debt(data, self.recipient.id)
+        actual_received = self.amount
+        if total_debt > 0:
+            seize = int(self.amount * 0.5)
+            paid, rem_debt, cleared = deduct_loan_debt(data, self.recipient.id, seize)
+            actual_received -= paid
+            if cleared:
+                debt_msg = f"\n💸 **CƯỠNG CHẾ XIẾT NỢ (50%):** Thu **-{paid:,}** {COIN}!\n🎉 **BẠN ĐÃ TRẢ HẾT TOÀN BỘ NỢ VAY NGÂN HÀNG!**"
+            else:
+                debt_msg = f"\n💸 **CƯỠNG CHẾ XIẾT NỢ (50%):** Thu **-{paid:,}** {COIN} để trả nợ! (Nợ còn: **{rem_debt:,}** {COIN})"
+
         u = get_user(data, self.recipient.id)
-        u["wallet"] = u.get("wallet", 0) + self.amount
+        u["wallet"] = u.get("wallet", 0) + actual_received
         save_db(data)
 
         embed = discord.Embed(
             title="🎁 PHONG BAO LÌ XÌ ĐÃ ĐƯỢC MỞ! 🧧",
             description=f"🎉 **{self.recipient.mention}** đã mở phong bao lì xì từ **{self.sender.mention}**!\n\n"
-                        f"💰 Số tiền nhận được: **+{self.amount:,}** {COIN}\n"
+                        f"💰 Số tiền nhận được: **+{self.amount:,}** {COIN} (Thực nhận ví: **+{actual_received:,}** {COIN}){debt_msg}\n"
                         f"💬 Lời chúc: *\"{self.wish or 'Chúc bạn luôn may mắn và phát tài phát lộc!'}\"*",
             color=discord.Color.gold()
         )
@@ -222,6 +246,17 @@ class Multiplayer(commands.Cog):
 
         data = load_db()
         apply_bank_tax(data)
+
+        # 🚨 KIỂM TRA PHONG TỎA NỢ XẤU
+        d1_debt, _, _, d1_over = calculate_loan_debt(data, ctx.author.id)
+        d2_debt, _, _, d2_over = calculate_loan_debt(data, opponent.id)
+        if d1_over:
+            await ctx.send(f"🚨 **TÀI KHOẢN CỦA BẠN ĐÃ BỊ PHONG TỎA CÁ CƯỢC!** Nợ quá hạn: **{d1_debt:,}** {COIN}. Hãy trả nợ (`!trano`) trước!")
+            return
+        if d2_over:
+            await ctx.send(f"🚨 **ĐỐI THỦ ĐANG BỊ PHONG TỎA DO NỢ QUÁ HẠN!** (Nợ: **{d2_debt:,}** {COIN})")
+            return
+
         u1 = get_user(data, ctx.author.id)
         u2 = get_user(data, opponent.id)
 
@@ -254,6 +289,17 @@ class Multiplayer(commands.Cog):
 
         data = load_db()
         apply_bank_tax(data)
+
+        # 🚨 KIỂM TRA PHONG TỎA NỢ XẤU
+        d1_debt, _, _, d1_over = calculate_loan_debt(data, interaction.user.id)
+        d2_debt, _, _, d2_over = calculate_loan_debt(data, doi_thu.id)
+        if d1_over:
+            await interaction.response.send_message(f"🚨 **TÀI KHOẢN ĐÃ BỊ PHONG TỎA CÁ CƯỢC!** Nợ quá hạn: **{d1_debt:,}** {COIN}. Hãy trả nợ (`/trano`) trước!", ephemeral=True)
+            return
+        if d2_over:
+            await interaction.response.send_message(f"🚨 **ĐỐI THỦ ĐANG BỊ PHONG TỎA DO NỢ QUÁ HẠN!** (Nợ: **{d2_debt:,}** {COIN})", ephemeral=True)
+            return
+
         u1 = get_user(data, interaction.user.id)
         u2 = get_user(data, doi_thu.id)
 
@@ -287,6 +333,17 @@ class Multiplayer(commands.Cog):
 
         data = load_db()
         apply_bank_tax(data)
+
+        # 🚨 KIỂM TRA PHONG TỎA NỢ XẤU
+        d1_debt, _, _, d1_over = calculate_loan_debt(data, ctx.author.id)
+        d2_debt, _, _, d2_over = calculate_loan_debt(data, opponent.id)
+        if d1_over:
+            await ctx.send(f"🚨 **TÀI KHOẢN CỦA BẠN ĐÃ BỊ PHONG TỎA CÁ CƯỢC!** Nợ quá hạn: **{d1_debt:,}** {COIN}. Hãy trả nợ (`!trano`) trước!")
+            return
+        if d2_over:
+            await ctx.send(f"🚨 **ĐỐI THỦ ĐANG BỊ PHONG TỎA DO NỢ QUÁ HẠN!** (Nợ: **{d2_debt:,}** {COIN})")
+            return
+
         u1 = get_user(data, ctx.author.id)
         u2 = get_user(data, opponent.id)
 
@@ -341,6 +398,17 @@ class Multiplayer(commands.Cog):
 
         data = load_db()
         apply_bank_tax(data)
+
+        # 🚨 KIỂM TRA PHONG TỎA NỢ XẤU
+        d1_debt, _, _, d1_over = calculate_loan_debt(data, interaction.user.id)
+        d2_debt, _, _, d2_over = calculate_loan_debt(data, doi_thu.id)
+        if d1_over:
+            await interaction.response.send_message(f"🚨 **TÀI KHOẢN ĐÃ BỊ PHONG TỎA CÁ CƯỢC!** Nợ quá hạn: **{d1_debt:,}** {COIN}. Hãy trả nợ (`/trano`) trước!", ephemeral=True)
+            return
+        if d2_over:
+            await interaction.response.send_message(f"🚨 **ĐỐI THỦ ĐANG BỊ PHONG TỎA DO NỢ QUÁ HẠN!** (Nợ: **{d2_debt:,}** {COIN})", ephemeral=True)
+            return
+
         u1 = get_user(data, interaction.user.id)
         u2 = get_user(data, doi_thu.id)
 
@@ -377,8 +445,8 @@ class Multiplayer(commands.Cog):
         embed = discord.Embed(
             title="🎲 TRẬN CHIẾN ĐỔ XÚC XẮC SOLO 1V1 🎲",
             description=f"• {interaction.user.mention} đổ được: 🎲 **{d1} điểm**\n"
-                        f"• {doi_thu.mention} đổ được: 🎲 **{d2} điểm**\n\n"
-                        f"{win_txt}",
+            f"• {doi_thu.mention} đổ được: 🎲 **{d2} điểm**\n\n"
+            f"{win_txt}",
             color=color
         )
         embed.set_footer(text="Thuế thắng: 10% nộp vào Kho Bạc Bot")
@@ -627,8 +695,14 @@ class Multiplayer(commands.Cog):
             return
 
         data = load_db()
-        u = get_user(data, ctx.author.id)
 
+        # 🚨 KIỂM TRA PHONG TỎA NỢ XẤU
+        d_debt, _, _, d_over = calculate_loan_debt(data, ctx.author.id)
+        if d_over:
+            await ctx.send(f"🚨 **TÀI KHOẢN ĐÃ BỊ PHONG TỎA!** Bạn đang nợ quá hạn **{d_debt:,}** {COIN}. Hãy trả nợ (`!trano`) trước!")
+            return
+
+        u = get_user(data, ctx.author.id)
         if u.get("wallet", 0) < amount:
             await ctx.send(f"❌ Ví không đủ tiền! Hiện có: **{u.get('wallet', 0):,}** {COIN}")
             return

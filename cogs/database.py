@@ -52,15 +52,16 @@ def get_user(data, user_id):
             "last_work": 0,
             "last_beg": 0,
             "last_rob": 0,
+            "last_laodong": 0,
             "casino_wins": 0,
             "casino_games": 0,
             "casino_profit": 0
         }
     else:
-        # Đảm bảo có các trường theo dõi casino
         if "casino_wins" not in data["users"][uid]: data["users"][uid]["casino_wins"] = 0
         if "casino_games" not in data["users"][uid]: data["users"][uid]["casino_games"] = 0
         if "casino_profit" not in data["users"][uid]: data["users"][uid]["casino_profit"] = 0
+        if "last_laodong" not in data["users"][uid]: data["users"][uid]["last_laodong"] = 0
     return data["users"][uid]
 
 def add_to_treasury(data, amount: int):
@@ -131,6 +132,33 @@ def calculate_loan_debt(data, user_id) -> tuple[int, int, int, bool]:
 
     interest = max(0, total_debt - principal)
     return total_debt, principal, interest, is_overdue
+
+def deduct_loan_debt(data, user_id, pay_amount: int) -> tuple[int, int, bool]:
+    """
+    Trừ nợ vay ngân hàng.
+    Trả về: (số tiền thực trả, số nợ còn lại, đã trả hết nợ hay chưa)
+    """
+    uid = str(user_id)
+    total_debt, principal, interest, is_overdue = calculate_loan_debt(data, user_id)
+    if total_debt <= 0 or pay_amount <= 0:
+        return 0, 0, False
+
+    actual_paid = min(pay_amount, total_debt)
+    if actual_paid >= total_debt:
+        if uid in data.get("loans", {}):
+            del data["loans"][uid]
+        add_to_treasury(data, interest)
+        save_db(data)
+        return actual_paid, 0, True
+    else:
+        rem_debt = total_debt - actual_paid
+        data["loans"][uid] = {
+            "principal": rem_debt,
+            "timestamp": time.time()
+        }
+        add_to_treasury(data, int(actual_paid * 0.20))
+        save_db(data)
+        return actual_paid, rem_debt, False
 
 def calculate_win_rate(data, user_id, amount: int) -> float:
     uid = str(user_id)

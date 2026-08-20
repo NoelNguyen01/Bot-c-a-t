@@ -5,7 +5,7 @@ from discord import app_commands
 import random
 import time
 from typing import Optional
-from cogs.database import load_db, save_db, get_user, add_to_treasury, apply_bank_tax, calculate_loan_debt
+from cogs.database import load_db, save_db, get_user, add_to_treasury, apply_bank_tax, calculate_loan_debt, deduct_loan_debt
 
 COIN = "💵"
 
@@ -642,18 +642,30 @@ class Economy(commands.Cog):
         streak = streak + 1 if diff < 172800 else 1
         base = random.randint(500, 1000)
         bonus = min(streak * 50, 500)
-        total = base + bonus
+        earned = base + bonus
+
+        # 🚨 CƠ CHẾ XIẾT NỢ TỰ ĐỘNG (50%)
+        debt_msg = ""
+        total_debt, principal, interest, is_overdue = calculate_loan_debt(data, ctx.author.id)
+        if total_debt > 0:
+            seize = int(earned * 0.5)
+            paid, rem_debt, cleared = deduct_loan_debt(data, ctx.author.id, seize)
+            earned -= paid
+            if cleared:
+                debt_msg = f"\n💸 **CƯỠNG CHẾ XIẾT NỢ (50%):** Thu **-{paid:,}** {COIN}!\n🎉 **BẠN ĐÃ TRẢ HẾT SẠCH NỢ NGÂN HÀNG!**"
+            else:
+                debt_msg = f"\n💸 **CƯỠNG CHẾ XIẾT NỢ (50%):** Thu **-{paid:,}** {COIN} để trả nợ! (Nợ còn: **{rem_debt:,}** {COIN})"
 
         u["last_daily"] = now
         u["streak"] = streak
-        u["wallet"] = u.get("wallet", 0) + total
+        u["wallet"] = u.get("wallet", 0) + earned
         save_db(data)
 
         embed = discord.Embed(
             title="🎁 PHẦN THƯỞNG ĐIỂM DANH HẰNG NGÀY",
-            description=f"🎉 Bạn nhận được **+{total:,}** {COIN}!\n"
+            description=f"🎉 Thực nhận vào ví: **+{earned:,}** {COIN}!\n"
                         f"• Thưởng gốc: **{base:,}** {COIN}\n"
-                        f"• Thưởng chuỗi (Streak {streak} ngày): **+{bonus:,}** {COIN}\n"
+                        f"• Thưởng chuỗi (Streak {streak} ngày): **+{bonus:,}** {COIN}{debt_msg}\n"
                         f"• Số dư ví: **{u['wallet']:,}** {COIN}",
             color=discord.Color.gold()
         )
@@ -679,18 +691,30 @@ class Economy(commands.Cog):
         streak = streak + 1 if diff < 172800 else 1
         base = random.randint(500, 1000)
         bonus = min(streak * 50, 500)
-        total = base + bonus
+        earned = base + bonus
+
+        # 🚨 CƠ CHẾ XIẾT NỢ TỰ ĐỘNG (50%)
+        debt_msg = ""
+        total_debt, principal, interest, is_overdue = calculate_loan_debt(data, interaction.user.id)
+        if total_debt > 0:
+            seize = int(earned * 0.5)
+            paid, rem_debt, cleared = deduct_loan_debt(data, interaction.user.id, seize)
+            earned -= paid
+            if cleared:
+                debt_msg = f"\n💸 **CƯỠNG CHẾ XIẾT NỢ (50%):** Thu **-{paid:,}** {COIN}!\n🎉 **BẠN ĐÃ TRẢ HẾT SẠCH NỢ NGÂN HÀNG!**"
+            else:
+                debt_msg = f"\n💸 **CƯỠNG CHẾ XIẾT NỢ (50%):** Thu **-{paid:,}** {COIN} để trả nợ! (Nợ còn: **{rem_debt:,}** {COIN})"
 
         u["last_daily"] = now
         u["streak"] = streak
-        u["wallet"] = u.get("wallet", 0) + total
+        u["wallet"] = u.get("wallet", 0) + earned
         save_db(data)
 
         embed = discord.Embed(
             title="🎁 PHẦN THƯỞNG ĐIỂM DANH HẰNG NGÀY",
-            description=f"🎉 Bạn nhận được **+{total:,}** {COIN}!\n"
+            description=f"🎉 Thực nhận vào ví: **+{earned:,}** {COIN}!\n"
                         f"• Thưởng gốc: **{base:,}** {COIN}\n"
-                        f"• Thưởng chuỗi (Streak {streak} ngày): **+{bonus:,}** {COIN}\n"
+                        f"• Thưởng chuỗi (Streak {streak} ngày): **+{bonus:,}** {COIN}{debt_msg}\n"
                         f"• Số dư ví: **{u['wallet']:,}** {COIN}",
             color=discord.Color.gold()
         )
@@ -718,10 +742,23 @@ class Economy(commands.Cog):
             ("Chăm sóc thú cưng", random.randint(250, 450))
         ]
         job, wage = random.choice(jobs)
+
+        # 🚨 CƠ CHẾ XIẾT NỢ TỰ ĐỘNG (50%)
+        debt_msg = ""
+        total_debt, principal, interest, is_overdue = calculate_loan_debt(data, ctx.author.id)
+        if total_debt > 0:
+            seize = int(wage * 0.5)
+            paid, rem_debt, cleared = deduct_loan_debt(data, ctx.author.id, seize)
+            wage -= paid
+            if cleared:
+                debt_msg = f" *(Ngân hàng đã trích thu -{paid:,} {COIN} để tất toán hết nợ!)*"
+            else:
+                debt_msg = f" *(Đã trích thu -{paid:,} {COIN} trừ nợ, nợ còn: {rem_debt:,} {COIN})*"
+
         u["last_work"] = now
         u["wallet"] = u.get("wallet", 0) + wage
         save_db(data)
-        await ctx.send(f"💼 Bạn vừa làm **{job}** và nhận được **+{wage:,}** {COIN}! (Ví: **{u['wallet']:,}** {COIN})")
+        await ctx.send(f"💼 Bạn vừa làm **{job}** và nhận được **+{wage:,}** {COIN}!{debt_msg} (Ví: **{u['wallet']:,}** {COIN})")
 
     @app_commands.command(name="work", description="Đi làm việc kiếm lương mỗi 30 phút")
     async def slash_work(self, interaction: discord.Interaction):
@@ -743,10 +780,23 @@ class Economy(commands.Cog):
             ("Bán trà sữa trân châu đường đen", random.randint(220, 480))
         ]
         job, wage = random.choice(jobs)
+
+        # 🚨 CƠ CHẾ XIẾT NỢ TỰ ĐỘNG (50%)
+        debt_msg = ""
+        total_debt, principal, interest, is_overdue = calculate_loan_debt(data, interaction.user.id)
+        if total_debt > 0:
+            seize = int(wage * 0.5)
+            paid, rem_debt, cleared = deduct_loan_debt(data, interaction.user.id, seize)
+            wage -= paid
+            if cleared:
+                debt_msg = f" *(Ngân hàng đã trích thu -{paid:,} {COIN} để tất toán hết nợ!)*"
+            else:
+                debt_msg = f" *(Đã trích thu -{paid:,} {COIN} trừ nợ, nợ còn: {rem_debt:,} {COIN})*"
+
         u["last_work"] = now
         u["wallet"] = u.get("wallet", 0) + wage
         save_db(data)
-        await interaction.response.send_message(f"💼 Bạn vừa làm **{job}** và nhận được **+{wage:,}** {COIN}! (Ví: **{u['wallet']:,}** {COIN})")
+        await interaction.response.send_message(f"💼 Bạn vừa làm **{job}** và nhận được **+{wage:,}** {COIN}!{debt_msg} (Ví: **{u['wallet']:,}** {COIN})")
 
     # ================= 7. ĂN XIN BEG =================
     @commands.command(name="beg", aliases=["anxin"])
@@ -765,9 +815,18 @@ class Economy(commands.Cog):
         u["last_beg"] = now
         if random.random() < 0.75:
             amt = random.randint(50, 200)
+            
+            debt_msg = ""
+            total_debt, principal, interest, is_overdue = calculate_loan_debt(data, ctx.author.id)
+            if total_debt > 0:
+                seize = int(amt * 0.5)
+                paid, rem_debt, cleared = deduct_loan_debt(data, ctx.author.id, seize)
+                amt -= paid
+                debt_msg = f" *(Ngân hàng xiết nợ -{paid:,} {COIN})*"
+
             u["wallet"] = u.get("wallet", 0) + amt
             save_db(data)
-            await ctx.send(f"🥺 Bạn được người tốt bố thí cho **+{amt:,}** {COIN}! (Ví: **{u['wallet']:,}** {COIN})")
+            await ctx.send(f"🥺 Bạn được người tốt bố thí cho **+{amt:,}** {COIN}!{debt_msg} (Ví: **{u['wallet']:,}** {COIN})")
         else:
             await ctx.send("💀 Bạn chìa nón ra nhưng bị bảo vệ đuổi chạy té khói!")
 
@@ -787,9 +846,18 @@ class Economy(commands.Cog):
         u["last_beg"] = now
         if random.random() < 0.75:
             amt = random.randint(50, 200)
+
+            debt_msg = ""
+            total_debt, principal, interest, is_overdue = calculate_loan_debt(data, interaction.user.id)
+            if total_debt > 0:
+                seize = int(amt * 0.5)
+                paid, rem_debt, cleared = deduct_loan_debt(data, interaction.user.id, seize)
+                amt -= paid
+                debt_msg = f" *(Ngân hàng xiết nợ -{paid:,} {COIN})*"
+
             u["wallet"] = u.get("wallet", 0) + amt
             save_db(data)
-            await interaction.response.send_message(f"🥺 Bạn được người tốt bố thí cho **+{amt:,}** {COIN}! (Ví: **{u['wallet']:,}** {COIN})")
+            await interaction.response.send_message(f"🥺 Bạn được người tốt bố thí cho **+{amt:,}** {COIN}!{debt_msg} (Ví: **{u['wallet']:,}** {COIN})")
         else:
             await interaction.response.send_message("💀 Bạn chìa nón ra nhưng bị bảo vệ đuổi chạy té khói!")
 
@@ -876,7 +944,7 @@ class Economy(commands.Cog):
             save_db(data)
             await interaction.response.send_message(f"🚨 Bị bắt quả tang tại trận! Bạn bị đền **-{fine:,}** {COIN} cho {nan_nhan.mention}!")
 
-    # ================= 9. CHUYỂN TIỀN PAY (THUẾ 20%) =================
+    # ================= 9. CHUYỂN TIỀN PAY (THUẾ 20% & KHÓA NỢ QUÁ HẠN) =================
     @commands.command(name="pay", aliases=["give", "chuyen"])
     async def cmd_pay(self, ctx, target: discord.Member, amount: int):
         if target.id == ctx.author.id or target.bot or amount <= 0:
@@ -885,6 +953,15 @@ class Economy(commands.Cog):
 
         data = load_db()
         apply_bank_tax(data)
+
+        # 🚨 CHẶN TẨU TÁN TÀI SẢN KHI ĐANG BỊ NỢ QUÁ HẠN
+        total_debt, principal, interest, is_overdue = calculate_loan_debt(data, ctx.author.id)
+        if is_overdue:
+            await ctx.send(f"🚨 **TÀI KHOẢN BỊ PHONG TỎA CHUYỂN TIỀN!**\n"
+                           f"💀 Bạn đang có khoản nợ quá hạn tại Ngân Hàng: **{total_debt:,}** {COIN}!\n"
+                           f"👉 Bắt buộc phải trả hết nợ (`!trano`) mới được phép chuyển tiền cho người khác!")
+            return
+
         sender = get_user(data, ctx.author.id)
         receiver = get_user(data, target.id)
 
@@ -915,6 +992,18 @@ class Economy(commands.Cog):
 
         data = load_db()
         apply_bank_tax(data)
+
+        # 🚨 CHẶN TẨU TÁN TÀI SẢN KHI ĐANG BỊ NỢ QUÁ HẠN
+        total_debt, principal, interest, is_overdue = calculate_loan_debt(data, interaction.user.id)
+        if is_overdue:
+            await interaction.response.send_message(
+                f"🚨 **TÀI KHOẢN BỊ PHONG TỎA CHUYỂN TIỀN!**\n"
+                f"💀 Bạn đang có khoản nợ quá hạn tại Ngân Hàng: **{total_debt:,}** {COIN}!\n"
+                f"👉 Bắt buộc phải trả hết nợ (`/trano`) mới được phép chuyển tiền!",
+                ephemeral=True
+            )
+            return
+
         sender = get_user(data, interaction.user.id)
         receiver = get_user(data, nguoi_nhan.id)
 
@@ -937,7 +1026,105 @@ class Economy(commands.Cog):
             f"• {nguoi_nhan.mention} thực nhận: **+{net_received:,}** {COIN}!"
         )
 
-    # ================= 10. TOP ĐẠI GIA =================
+    # ================= 10. LAO ĐỘNG CÔNG ÍCH CHUỘC NỢ =================
+    @commands.command(name="laodong", aliases=["chuocno", "laodongcongich", "culi_work"])
+    async def cmd_laodong(self, ctx):
+        data = load_db()
+        apply_bank_tax(data)
+        u = get_user(data, ctx.author.id)
+        now = time.time()
+        last = u.get("last_laodong", 0)
+
+        total_debt, principal, interest, is_overdue = calculate_loan_debt(data, ctx.author.id)
+        if total_debt <= 0:
+            await ctx.send("✨ Bạn không có khoản nợ ngân hàng nào để phải đi lao động công ích!")
+            return
+
+        if now - last < 900:
+            rem = int(900 - (now - last))
+            await ctx.send(f"⏳ Bạn vừa đi lao động công ích mệt rồi, nghỉ ngơi **{rem // 60}p {rem % 60}s** nữa mới được cuốc đất tiếp!")
+            return
+
+        tasks = [
+            ("Quét dọn sòng bạc Casino sau giờ bão xúc xắc", random.randint(1000000, 2500000)),
+            ("Lao công chùi rửa toilet phòng Vip Server", random.randint(1200000, 3000000)),
+            ("Chạy bàn bưng bê nước phục vụ các Đại Gia sòng bạc", random.randint(1000000, 2000000)),
+            ("Nhặt bóng sân Golf cho các chủ nợ", random.randint(1500000, 3000000)),
+            ("Làm culi chạy deadline chuộc tội đánh bạc thua", random.randint(1000000, 2500000))
+        ]
+        task_name, debt_cleared_val = random.choice(tasks)
+        u["last_laodong"] = now
+
+        paid, rem_debt, cleared = deduct_loan_debt(data, ctx.author.id, debt_cleared_val)
+        save_db(data)
+
+        if cleared:
+            status_text = "🎉 **BẠN ĐÃ TRẢ HẾT SẠCH TOÀN BỘ NỢ NGÂN HÀNG! TÀI KHOẢN ĐÃ ĐƯỢC TỰ DO!**"
+            color = discord.Color.green()
+        else:
+            status_text = f"💳 **Nợ ngân hàng còn lại:** **{rem_debt:,}** {COIN}"
+            color = discord.Color.orange()
+
+        embed = discord.Embed(
+            title="👮 LAO ĐỘNG CÔNG ÍCH CHUỘC NỢ 🧹",
+            description=f"**Con nợ:** {ctx.author.mention}\n"
+                        f"🔨 **Công việc:** *{task_name}*\n"
+                        f"✨ **Được trừ nợ:** **-{paid:,}** {COIN}\n\n"
+                        f"{status_text}",
+            color=color
+        )
+        embed.set_footer(text="Mỗi 15 phút được lao động công ích 1 lần để xóa nợ!")
+        await ctx.send(embed=embed)
+
+    @app_commands.command(name="laodong", description="Lao động công ích chuộc tội đánh bạc thua để trừ nợ ngân hàng (15 phút/lần)")
+    async def slash_laodong(self, interaction: discord.Interaction):
+        data = load_db()
+        apply_bank_tax(data)
+        u = get_user(data, interaction.user.id)
+        now = time.time()
+        last = u.get("last_laodong", 0)
+
+        total_debt, principal, interest, is_overdue = calculate_loan_debt(data, interaction.user.id)
+        if total_debt <= 0:
+            await interaction.response.send_message("✨ Bạn không có khoản nợ ngân hàng nào để phải đi lao động công ích!", ephemeral=True)
+            return
+
+        if now - last < 900:
+            rem = int(900 - (now - last))
+            await interaction.response.send_message(f"⏳ Bạn vừa đi lao động công ích mệt rồi, nghỉ ngơi **{rem // 60}p {rem % 60}s** nữa mới được cuốc đất tiếp!", ephemeral=True)
+            return
+
+        tasks = [
+            ("Quét dọn sòng bạc Casino sau giờ bão xúc xắc", random.randint(1000000, 2500000)),
+            ("Lao công chùi rửa toilet phòng Vip Server", random.randint(1200000, 3000000)),
+            ("Chạy bàn bưng bê nước phục vụ các Đại Gia sòng bạc", random.randint(1000000, 2000000)),
+            ("Nhặt bóng sân Golf cho các chủ nợ", random.randint(1500000, 3000000)),
+            ("Làm culi chạy deadline chuộc tội đánh bạc thua", random.randint(1000000, 2500000))
+        ]
+        task_name, debt_cleared_val = random.choice(tasks)
+        u["last_laodong"] = now
+
+        paid, rem_debt, cleared = deduct_loan_debt(data, interaction.user.id, debt_cleared_val)
+        save_db(data)
+
+        if cleared:
+            status_text = "🎉 **BẠN ĐÃ TRẢ HẾT SẠCH TOÀN BỘ NỢ NGÂN HÀNG! TÀI KHOẢN ĐÃ ĐƯỢC TỰ DO!**"
+            color = discord.Color.green()
+        else:
+            status_text = f"💳 **Nợ ngân hàng còn lại:** **{rem_debt:,}** {COIN}"
+            color = discord.Color.orange()
+
+        embed = discord.Embed(
+            title="👮 LAO ĐỘNG CÔNG ÍCH CHUỘC NỢ 🧹",
+            description=f"**Con nợ:** {interaction.user.mention}\n"
+                        f"🔨 **Công việc:** *{task_name}*\n"
+                        f"✨ **Được trừ nợ:** **-{paid:,}** {COIN}\n\n"
+                        f"{status_text}",
+            color=color
+        )
+        await interaction.response.send_message(embed=embed)
+
+    # ================= 11. TOP ĐẠI GIA =================
     @commands.command(name="top", aliases=["leaderboard", "rich"])
     async def cmd_top(self, ctx):
         data = load_db()
@@ -978,8 +1165,7 @@ class Economy(commands.Cog):
         embed.description = desc
         await interaction.response.send_message(embed=embed)
 
-
-    # ================= 11. BẢNG PHONG THẦN THẦN BÀI TOPWIN =================
+    # ================= 12. BẢNG PHONG THẦN THẦN BÀI TOPWIN =================
     @commands.command(name="topwin", aliases=["topthang", "bangwin", "thanbai"])
     async def cmd_topwin(self, ctx):
         """Xem Bảng Phong Thần Top Tỷ Lệ Thắng Sòng Bạc"""
@@ -991,7 +1177,7 @@ class Economy(commands.Cog):
             games = uinfo.get("casino_games", 0)
             wins = uinfo.get("casino_wins", 0)
             profit = uinfo.get("casino_profit", 0)
-            if games >= 3:  # Tối thiểu chơi 3 ván để lên bảng xếp hạng
+            if games >= 3:
                 win_rate = (wins / games) * 100.0
                 player_stats.append((uid, win_rate, wins, games, profit))
 
@@ -999,7 +1185,6 @@ class Economy(commands.Cog):
             await ctx.send("🎰 Chưa có đủ dữ liệu sòng bạc (Cần tối thiểu chơi 3 ván để lên Bảng Phong Thần)!")
             return
 
-        # Sắp xếp theo tỷ lệ thắng giảm dần, nếu bằng nhau thì theo lợi nhuận
         player_stats.sort(key=lambda x: (x[1], x[4]), reverse=True)
 
         embed = discord.Embed(

@@ -34,6 +34,12 @@ def calculate_hand(hand):
         aces -= 1
     return val
 
+def record_game(u: dict, won: bool, profit: int):
+    u["casino_games"] = u.get("casino_games", 0) + 1
+    if won:
+        u["casino_wins"] = u.get("casino_wins", 0) + 1
+    u["casino_profit"] = u.get("casino_profit", 0) + profit
+
 
 # ================= 1. VIEW XÌ DÁCH BLACKJACK =================
 class BlackjackView(discord.ui.View):
@@ -90,6 +96,7 @@ class BlackjackView(discord.ui.View):
                 child.disabled = True
             
             u["wallet"] -= self.bet
+            record_game(u, False, -self.bet)
             save_db(data)
             embed = self.build_embed(
                 show_dealer=True,
@@ -106,6 +113,7 @@ class BlackjackView(discord.ui.View):
             tax = int(raw_profit * 0.10)
             net_profit = raw_profit - tax
             u["wallet"] += net_profit
+            record_game(u, True, net_profit)
             add_to_treasury(data, tax)
             save_db(data)
 
@@ -142,12 +150,14 @@ class BlackjackView(discord.ui.View):
             tax = int(raw_profit * 0.10)
             net_profit = raw_profit - tax
             u["wallet"] += net_profit
+            record_game(u, True, net_profit)
             add_to_treasury(data, tax)
             outcome = f"🎉 **BẠN ĐÃ CHIẾN THẮNG ({p_val} vs {d_val})!**\n" \
                       f"🏆 Thắng nhận: **+{net_profit:,}** {COIN} *(Thuế 10%: -{tax:,} {COIN})*! Ví: **{u['wallet']:,}** {COIN}."
             color = discord.Color.green()
         else:
             u["wallet"] -= self.bet
+            record_game(u, False, -self.bet)
             outcome = f"💀 **NHÀ CÁI THẮNG ({d_val} vs {p_val})!**\n💸 Bạn mất **-{self.bet:,}** {COIN}! Ví: **{u['wallet']:,}** {COIN}."
             color = discord.Color.red()
 
@@ -217,17 +227,20 @@ class Casino(commands.Cog):
 
         if is_bao:
             u["wallet"] -= amount
+            record_game(u, False, -amount)
             msg = f"🌪️ **BÃO XÚC XẮC 3 CON {d1}!**\n💀 Nhà cái hốt trọn ổ cả làng! Mất **-{amount:,}** {COIN}!"
             color = discord.Color.red()
         elif user_won:
             tax = int(amount * 0.10)
             net_win = amount - tax
             u["wallet"] += net_win
+            record_game(u, True, net_win)
             add_to_treasury(data, tax)
             msg = f"🎉 **BẠN ĐOÁN ĐÚNG ({actual.upper()})!**\n🏆 Thắng: **+{net_win:,}** {COIN} *(Thuế 10%: -{tax:,} {COIN})*!"
             color = discord.Color.green()
         else:
             u["wallet"] -= amount
+            record_game(u, False, -amount)
             msg = f"💀 **BẠN ĐOÁN SAI ({actual.upper()})!**\n💸 Mất **-{amount:,}** {COIN}!"
             color = discord.Color.red()
 
@@ -293,17 +306,20 @@ class Casino(commands.Cog):
 
         if is_bao:
             u["wallet"] -= tien_cuoc
+            record_game(u, False, -tien_cuoc)
             msg = f"🌪️ **BÃO XÚC XẮC 3 CON {d1}!**\n💀 Nhà cái hốt trọn ổ! Mất **-{tien_cuoc:,}** {COIN}!"
             color = discord.Color.red()
         elif user_won:
             tax = int(tien_cuoc * 0.10)
             net_win = tien_cuoc - tax
             u["wallet"] += net_win
+            record_game(u, True, net_win)
             add_to_treasury(data, tax)
             msg = f"🎉 **BẠN ĐOÁN ĐÚNG ({actual.upper()})!**\n🏆 Thắng: **+{net_win:,}** {COIN} *(Thuế 10%: -{tax:,} {COIN})*!"
             color = discord.Color.green()
         else:
             u["wallet"] -= tien_cuoc
+            record_game(u, False, -tien_cuoc)
             msg = f"💀 **BẠN ĐOÁN SAI ({actual.upper()})!**\n💸 Mất **-{tien_cuoc:,}** {COIN}!"
             color = discord.Color.red()
 
@@ -340,6 +356,7 @@ class Casino(commands.Cog):
             tax = int(raw_profit * 0.10)
             net_profit = raw_profit - tax
             u["wallet"] += net_profit
+            record_game(u, True, net_profit)
             add_to_treasury(data, tax)
             save_db(data)
 
@@ -379,6 +396,7 @@ class Casino(commands.Cog):
             tax = int(raw_profit * 0.10)
             net_profit = raw_profit - tax
             u["wallet"] += net_profit
+            record_game(u, True, net_profit)
             add_to_treasury(data, tax)
             save_db(data)
 
@@ -429,11 +447,13 @@ class Casino(commands.Cog):
             tax = int(amount * 0.10)
             net_win = amount - tax
             u["wallet"] += net_win
+            record_game(u, True, net_win)
             add_to_treasury(data, tax)
             msg = f"🎉 **ĐOÁN ĐÚNG!** Thắng: **+{net_win:,}** {COIN} *(Thuế 10%: -{tax:,} {COIN})*!"
             color = discord.Color.green()
         else:
             u["wallet"] -= amount
+            record_game(u, False, -amount)
             msg = f"💀 **ĐOÁN SAI!** Mất **-{amount:,}** {COIN}!"
             color = discord.Color.red()
 
@@ -474,11 +494,13 @@ class Casino(commands.Cog):
             tax = int(tien_cuoc * 0.10)
             net_win = tien_cuoc - tax
             u["wallet"] += net_win
+            record_game(u, True, net_win)
             add_to_treasury(data, tax)
             msg = f"🎉 **ĐOÁN ĐÚNG!** Thắng: **+{net_win:,}** {COIN} *(Thuế 10%: -{tax:,} {COIN})*!"
             color = discord.Color.green()
         else:
             u["wallet"] -= tien_cuoc
+            record_game(u, False, -tien_cuoc)
             msg = f"💀 **ĐOÁN SAI!** Mất **-{tien_cuoc:,}** {COIN}!"
             color = discord.Color.red()
 
@@ -529,6 +551,7 @@ class Casino(commands.Cog):
             tax = int(raw_win * 0.10)
             net_win = raw_win - tax
             u["wallet"] += net_win
+            record_game(u, True, net_win)
             add_to_treasury(data, tax)
             msg = f"💥 **JACKPOT NỔ HŨ THẦN THÁNH!**\n🎉 Thắng nhận: **+{net_win:,}** {COIN} *(Thuế 10%: -{tax:,} {COIN})*!"
             color = discord.Color.gold()
@@ -537,11 +560,13 @@ class Casino(commands.Cog):
             tax = int(raw_win * 0.10)
             net_win = raw_win - tax
             u["wallet"] += net_win
+            record_game(u, True, net_win)
             add_to_treasury(data, tax)
             msg = f"✨ **TRÚNG 2 HÌNH!**\n🎉 Thắng nhận: **+{net_win:,}** {COIN} *(Thuế 10%: -{tax:,} {COIN})*!"
             color = discord.Color.green()
         else:
             u["wallet"] -= amount
+            record_game(u, False, -amount)
             msg = f"💀 Không trúng hình nào! Mất **-{amount:,}** {COIN}."
             color = discord.Color.red()
 
@@ -592,6 +617,7 @@ class Casino(commands.Cog):
             tax = int(raw_win * 0.10)
             net_win = raw_win - tax
             u["wallet"] += net_win
+            record_game(u, True, net_win)
             add_to_treasury(data, tax)
             msg = f"💥 **JACKPOT NỔ HŨ THẦN THÁNH!**\n🎉 Thắng: **+{net_win:,}** {COIN} *(Thuế 10%: -{tax:,} {COIN})*!"
             color = discord.Color.gold()
@@ -600,11 +626,13 @@ class Casino(commands.Cog):
             tax = int(raw_win * 0.10)
             net_win = raw_win - tax
             u["wallet"] += net_win
+            record_game(u, True, net_win)
             add_to_treasury(data, tax)
             msg = f"✨ **TRÚNG 2 HÌNH!**\n🎉 Thắng: **+{net_win:,}** {COIN} *(Thuế 10%: -{tax:,} {COIN})*!"
             color = discord.Color.green()
         else:
             u["wallet"] -= tien_cuoc
+            record_game(u, False, -tien_cuoc)
             msg = f"💀 Không trúng hình nào! Mất **-{tien_cuoc:,}** {COIN}."
             color = discord.Color.red()
 
@@ -669,12 +697,14 @@ class Casino(commands.Cog):
             tax = int(raw_win * 0.10)
             net_win = raw_win - tax
             u["wallet"] += net_win
+            record_game(u, True, net_win)
             add_to_treasury(data, tax)
             msg = f"🎉 **TRÚNG {match_count} CON {chosen_animal}!**\n" \
                   f"🏆 Thắng: **+{net_win:,}** {COIN} *(Thuế 10%: -{tax:,} {COIN})*!"
             color = discord.Color.green()
         else:
             u["wallet"] -= amount
+            record_game(u, False, -amount)
             msg = f"💀 **TRẬT LẤT!** Mất **-{amount:,}** {COIN}."
             color = discord.Color.red()
 
@@ -735,12 +765,14 @@ class Casino(commands.Cog):
             tax = int(raw_win * 0.10)
             net_win = raw_win - tax
             u["wallet"] += net_win
+            record_game(u, True, net_win)
             add_to_treasury(data, tax)
             msg = f"🎉 **TRÚNG {match_count} CON {chosen_animal}!**\n" \
                   f"🏆 Thắng: **+{net_win:,}** {COIN} *(Thuế 10%: -{tax:,} {COIN})*!"
             color = discord.Color.green()
         else:
             u["wallet"] -= tien_cuoc
+            record_game(u, False, -tien_cuoc)
             msg = f"💀 **TRẬT LẤT!** Mất **-{tien_cuoc:,}** {COIN}."
             color = discord.Color.red()
 

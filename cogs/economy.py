@@ -979,5 +979,79 @@ class Economy(commands.Cog):
         await interaction.response.send_message(embed=embed)
 
 
+    # ================= 11. BẢNG PHONG THẦN THẦN BÀI TOPWIN =================
+    @commands.command(name="topwin", aliases=["topthang", "bangwin", "thanbai"])
+    async def cmd_topwin(self, ctx):
+        """Xem Bảng Phong Thần Top Tỷ Lệ Thắng Sòng Bạc"""
+        data = load_db()
+        users = data.get("users", {})
+        
+        player_stats = []
+        for uid, uinfo in users.items():
+            games = uinfo.get("casino_games", 0)
+            wins = uinfo.get("casino_wins", 0)
+            profit = uinfo.get("casino_profit", 0)
+            if games >= 3:  # Tối thiểu chơi 3 ván để lên bảng xếp hạng
+                win_rate = (wins / games) * 100.0
+                player_stats.append((uid, win_rate, wins, games, profit))
+
+        if not player_stats:
+            await ctx.send("🎰 Chưa có đủ dữ liệu sòng bạc (Cần tối thiểu chơi 3 ván để lên Bảng Phong Thần)!")
+            return
+
+        # Sắp xếp theo tỷ lệ thắng giảm dần, nếu bằng nhau thì theo lợi nhuận
+        player_stats.sort(key=lambda x: (x[1], x[4]), reverse=True)
+
+        embed = discord.Embed(
+            title="🏆 BẢNG PHONG THẦN THẦN BÀI (TOP WIN RATE) 🎰",
+            description="Vinh danh những cao thủ cờ bạc có tỷ lệ thắng cao nhất Server:\n",
+            color=discord.Color.gold()
+        )
+        medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+        desc = ""
+        for i, (uid, wr, wins, games, profit) in enumerate(player_stats[:10]):
+            medal = medals[i] if i < len(medals) else f"#{i+1}"
+            profit_str = f"+{profit:,}" if profit >= 0 else f"{profit:,}"
+            desc += f"{medal} <@{uid}> — **{wr:.1f}% Win Rate** *({wins}/{games} trận)* • Lãi: **{profit_str}** {COIN}\n"
+
+        embed.description = desc
+        embed.set_footer(text="Tối thiểu 3 ván để lên bảng • Tỷ lệ thắng tự động điều chỉnh theo mức cược!")
+        await ctx.send(embed=embed)
+
+    @app_commands.command(name="topwin", description="Xem Bảng Phong Thần Top Tỷ Lệ Thắng Casino của Server")
+    async def slash_topwin(self, interaction: discord.Interaction):
+        data = load_db()
+        users = data.get("users", {})
+        
+        player_stats = []
+        for uid, uinfo in users.items():
+            games = uinfo.get("casino_games", 0)
+            wins = uinfo.get("casino_wins", 0)
+            profit = uinfo.get("casino_profit", 0)
+            if games >= 3:
+                win_rate = (wins / games) * 100.0
+                player_stats.append((uid, win_rate, wins, games, profit))
+
+        if not player_stats:
+            await interaction.response.send_message("🎰 Chưa có đủ dữ liệu sòng bạc (Cần tối thiểu chơi 3 ván)!", ephemeral=True)
+            return
+
+        player_stats.sort(key=lambda x: (x[1], x[4]), reverse=True)
+
+        embed = discord.Embed(
+            title="🏆 BẢNG PHONG THẦN THẦN BÀI (TOP WIN RATE) 🎰",
+            color=discord.Color.gold()
+        )
+        medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+        desc = ""
+        for i, (uid, wr, wins, games, profit) in enumerate(player_stats[:10]):
+            medal = medals[i] if i < len(medals) else f"#{i+1}"
+            profit_str = f"+{profit:,}" if profit >= 0 else f"{profit:,}"
+            desc += f"{medal} <@{uid}> — **{wr:.1f}% Win Rate** *({wins}/{games} trận)* • Lãi: **{profit_str}** {COIN}\n"
+
+        embed.description = desc
+        await interaction.response.send_message(embed=embed)
+
+
 async def setup(bot):
     await bot.add_cog(Economy(bot))

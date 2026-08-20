@@ -26,7 +26,6 @@ def load_db():
     with open(DB_FILE, "r", encoding="utf-8") as f:
         try:
             data = json.load(f)
-            # Đảm bảo có đầy đủ schema
             if "users" not in data: data["users"] = {}
             if "loans" not in data: data["loans"] = {}
             if "debts" not in data: data["debts"] = {}
@@ -53,12 +52,15 @@ def get_user(data, user_id):
             "last_work": 0,
             "last_beg": 0,
             "last_rob": 0,
-            "shield_until": 0,
-            "inventory": {},
-            "pet": None,
-            "partner_id": None,
-            "marry_time": 0
+            "casino_wins": 0,
+            "casino_games": 0,
+            "casino_profit": 0
         }
+    else:
+        # Đảm bảo có các trường theo dõi casino
+        if "casino_wins" not in data["users"][uid]: data["users"][uid]["casino_wins"] = 0
+        if "casino_games" not in data["users"][uid]: data["users"][uid]["casino_games"] = 0
+        if "casino_profit" not in data["users"][uid]: data["users"][uid]["casino_profit"] = 0
     return data["users"][uid]
 
 def add_to_treasury(data, amount: int):
@@ -83,7 +85,6 @@ def apply_bank_tax(data):
         for uid, udata in data.get("users", {}).items():
             bank_balance = udata.get("bank", 0)
             if bank_balance > 0:
-                # Trừ 5% cho mỗi chu kỳ 5h đã trôi qua
                 new_balance = bank_balance
                 for _ in range(cycles):
                     tax = int(new_balance * 0.05)
@@ -97,13 +98,6 @@ def apply_bank_tax(data):
         save_db(data)
 
 def calculate_loan_debt(data, user_id) -> tuple[int, int, int, bool]:
-    """
-    Tính toán số nợ hiện tại của user.
-    Trả về: (total_debt, principal, interest, is_overdue)
-    - Trong 30 phút: Lãi 2% / phút.
-    - Sau 30 phút (quá hạn): Gia hạn 18 phút (60%), Lãi 4% / phút.
-    - Trần nợ tối đa: 300% gốc (gấp 3 lần gốc).
-    """
     uid = str(user_id)
     loans = data.get("loans", {})
     if uid not in loans:
@@ -119,23 +113,18 @@ def calculate_loan_debt(data, user_id) -> tuple[int, int, int, bool]:
     if elapsed_minutes <= 0:
         return principal, principal, 0, False
 
-    # 30 phút đầu: 2%/phút
     regular_mins = min(elapsed_minutes, 30)
     overdue_mins = max(0, elapsed_minutes - 30)
     is_overdue = (overdue_mins > 0)
 
-    # Tính lãi kép 2%/phút cho 30 phút đầu
     debt = float(principal)
     for _ in range(regular_mins):
         debt *= 1.02
 
-    # Tính lãi phạt 4%/phút cho thời gian quá hạn
     for _ in range(overdue_mins):
         debt *= 1.04
 
     total_debt = int(debt)
-
-    # Khống chế trần nợ tối đa 300% gốc
     max_debt_cap = principal * 3
     if total_debt > max_debt_cap:
         total_debt = max_debt_cap
@@ -144,30 +133,22 @@ def calculate_loan_debt(data, user_id) -> tuple[int, int, int, bool]:
     return total_debt, principal, interest, is_overdue
 
 def calculate_win_rate(data, user_id, amount: int) -> float:
-    """
-    Tính toán tỷ lệ thắng dựa trên:
-    1. Cấu hình Cheat đích danh cho user (!setwin @user X)
-    2. Cấu hình Global Mode (!nhacai)
-    3. Mức tiền cược (Càng cược to tỷ lệ thắng càng tụt thảm hại)
-    """
     uid = str(user_id)
     cheat_cfg = data.get("cheat_config", {})
     user_overrides = cheat_cfg.get("user_overrides", {})
 
-    # 1. Can thiệp đích danh user
     if uid in user_overrides:
         custom_rate = user_overrides[uid]
         return float(custom_rate) / 100.0
 
-    # 2. Can thiệp Global Mode
     global_mode = cheat_cfg.get("global_mode", "default")
-    if global_mode == "generous":  # Mồi chài
+    if global_mode == "generous":
         base_rate = 0.60
-    elif global_mode == "hardcore":  # Hút máu
+    elif global_mode == "hardcore":
         base_rate = 0.25
-    elif global_mode == "drain":     # Tận thu
+    elif global_mode == "drain":
         base_rate = 0.10
-    else:  # Mặc định theo bậc tiền cược
+    else:
         if amount <= 50000:
             base_rate = 0.48
         elif amount <= 500000:

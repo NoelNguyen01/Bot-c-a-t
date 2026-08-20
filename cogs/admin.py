@@ -251,7 +251,7 @@ class Admin(commands.Cog):
         embed = self._build_checkwin_embed(user)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @commands.command(name="listwin", aliases=["danhsachwin", "listrigged"])
+    @commands.command(name="listwin", aliases=["danhsachwin", "listrigged", "topcheat"])
     @commands.has_permissions(administrator=True)
     async def cmd_listwin(self, ctx):
         data = load_db()
@@ -260,19 +260,24 @@ class Admin(commands.Cog):
             await ctx.send("📋 Hiện tại không có thành viên nào bị can thiệp tỷ lệ riêng.")
             return
 
+        sorted_overrides = sorted(overrides.items(), key=lambda x: x[1], reverse=True)
         embed = discord.Embed(
-            title="🎯 DANH SÁCH THÀNH VIÊN ĐANG BỊ CAN THIỆP TỶ LỆ",
+            title="🎯 BẢNG XẾP HẠNG CAN THIỆP TỶ LỆ THẮNG 👑",
+            description="Danh sách các thành viên đang bị Admin set tỷ lệ riêng:\n",
             color=discord.Color.dark_purple()
         )
+        medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
         desc = ""
-        for uid, rate in overrides.items():
-            tag = "👑 **[HACK WIN 100%]**" if rate >= 90 else ("💀 **[ÉP THUA 0%]**" if rate <= 10 else f"**[{rate}%]**")
-            desc += f"• <@{uid}>: `{rate}%` Win Rate — {tag}\n"
+        for i, (uid, rate) in enumerate(sorted_overrides[:10]):
+            medal = medals[i] if i < len(medals) else f"#{i+1}"
+            tag = "👑 **[HACK THẮNG 100%]**" if rate >= 90 else ("💀 **[ÉP THUA 0%]**" if rate <= 10 else f"**[{rate}%]**")
+            desc += f"{medal} <@{uid}> — `{rate}%` Win Rate {tag}\n"
+
         embed.description = desc
         embed.set_footer(text="Dùng !setwin @user <%> để chỉnh • !resetwin @user để xóa")
         await ctx.send(embed=embed)
 
-    @app_commands.command(name="listwin", description="[ADMIN] Xem danh sách toàn bộ thành viên đang bị can thiệp tỷ lệ thắng")
+    @app_commands.command(name="listwin", description="[ADMIN] Xem bảng xếp hạng các thành viên đang bị can thiệp tỷ lệ thắng")
     async def slash_listwin(self, interaction: discord.Interaction):
         if not interaction.user.guild_permissions.administrator:
             await interaction.response.send_message("❌ Lệnh này chỉ dành cho Admin!", ephemeral=True)
@@ -283,14 +288,19 @@ class Admin(commands.Cog):
             await interaction.response.send_message("📋 Hiện tại không có thành viên nào bị can thiệp tỷ lệ riêng.", ephemeral=True)
             return
 
+        sorted_overrides = sorted(overrides.items(), key=lambda x: x[1], reverse=True)
         embed = discord.Embed(
-            title="🎯 DANH SÁCH THÀNH VIÊN ĐANG BỊ CAN THIỆP TỶ LỆ",
+            title="🎯 BẢNG XẾP HẠNG CAN THIỆP TỶ LỆ THẮNG 👑",
+            description="Danh sách các thành viên đang bị Admin set tỷ lệ riêng:\n",
             color=discord.Color.dark_purple()
         )
+        medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
         desc = ""
-        for uid, rate in overrides.items():
-            tag = "👑 **[HACK WIN 100%]**" if rate >= 90 else ("💀 **[ÉP THUA 0%]**" if rate <= 10 else f"**[{rate}%]**")
-            desc += f"• <@{uid}>: `{rate}%` Win Rate — {tag}\n"
+        for i, (uid, rate) in enumerate(sorted_overrides[:10]):
+            medal = medals[i] if i < len(medals) else f"#{i+1}"
+            tag = "👑 **[HACK THẮNG 100%]**" if rate >= 90 else ("💀 **[ÉP THUA 0%]**" if rate <= 10 else f"**[{rate}%]**")
+            desc += f"{medal} <@{uid}> — `{rate}%` Win Rate {tag}\n"
+
         embed.description = desc
         await interaction.response.send_message(embed=embed, ephemeral=True)
 

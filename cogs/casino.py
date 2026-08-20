@@ -21,18 +21,44 @@ def calculate_hand(hand):
     val = 0
     aces = 0
     for rank, _ in hand:
-        if rank in ['J', 'Q', 'K']:
+        if rank in ['10', 'J', 'Q', 'K']:
             val += 10
         elif rank == 'A':
+            val += 11
             aces += 1
-        elif rank == '10':
-            val += 10
         else:
             val += int(rank)
     while val > 21 and aces > 0:
         val -= 10
         aces -= 1
     return val
+
+def is_xi_bang(hand):
+    return len(hand) == 2 and hand[0][0] == 'A' and hand[1][0] == 'A'
+
+def is_xi_dach(hand):
+    if len(hand) != 2:
+        return False
+    ranks = [hand[0][0], hand[1][0]]
+    has_ace = ('A' in ranks)
+    has_ten = (ranks[0] in ['10', 'J', 'Q', 'K'] or ranks[1] in ['10', 'J', 'Q', 'K'])
+    return has_ace and has_ten
+
+def is_ngu_linh(hand):
+    return len(hand) == 5 and calculate_hand(hand) <= 21
+
+def get_hand_display(hand):
+    val = calculate_hand(hand)
+    cards_str = " ".join(card_to_str(c) for c in hand)
+    if is_xi_bang(hand):
+        return f"{cards_str} `(XÌ BÀNG 🌟🌟)`"
+    if is_xi_dach(hand):
+        return f"{cards_str} `(XÌ DÁCH 🌟)`"
+    if len(hand) == 5 and val <= 21:
+        return f"{cards_str} `(NGŨ LINH {val}đ)`"
+    if val > 21:
+        return f"{cards_str} `(QUẮC {val}đ)`"
+    return f"{cards_str} `({val} điểm)`"
 
 def record_game(u: dict, won: bool, profit: int):
     u["casino_games"] = u.get("casino_games", 0) + 1
@@ -62,13 +88,11 @@ class BlackjackView(discord.ui.View):
         return True
 
     def build_embed(self, show_dealer: bool = False, outcome: str = "", color: discord.Color = discord.Color.blue()):
-        p_val = calculate_hand(self.player_hand)
-        p_cards = " ".join(card_to_str(c) for c in self.player_hand)
+        p_display = get_hand_display(self.player_hand)
 
         if show_dealer:
-            d_val = calculate_hand(self.dealer_hand)
-            d_cards = " ".join(card_to_str(c) for c in self.dealer_hand)
-            dealer_text = f"**Bài Nhà Cái:** {d_cards} `({d_val} điểm)`"
+            d_display = get_hand_display(self.dealer_hand)
+            dealer_text = f"**Bài Nhà Cái:** {d_display}"
         else:
             dealer_text = f"**Bài Nhà Cái:** {card_to_str(self.dealer_hand[0])} `🂠` `(? điểm)`"
 
@@ -76,11 +100,11 @@ class BlackjackView(discord.ui.View):
             title="🃏 SÒNG BẠC XÌ DÁCH (BLACKJACK) 🎰",
             description=f"**Người chơi:** {self.user.mention} | **Tiền cược:** **{self.bet:,}** {COIN}\n\n"
                         f"{dealer_text}\n"
-                        f"**Bài Của Bạn:** {p_cards} `({p_val} điểm)`\n\n"
+                        f"**Bài Của Bạn:** {p_display}\n\n"
                         f"{outcome}",
             color=color
         )
-        embed.set_footer(text="Bấm 'Rút Bài' để lấy thêm lá hoặc 'Dằn Bài' để so điểm! (Thuế thắng cược: 10%)")
+        embed.set_footer(text="Bấm 'Rút Bài' để lấy thêm lá hoặc 'Dằn Bài' để so điểm! (Hòa: Hoàn cược 100%)")
         return embed
 
     @discord.ui.button(label="🃏 Rút Bài (Hit)", style=discord.ButtonStyle.success)
@@ -98,7 +122,7 @@ class BlackjackView(discord.ui.View):
             self.finished = True
             for child in self.children:
                 child.disabled = True
-            
+
             u["wallet"] -= self.bet
             record_game(u, False, -self.bet)
             save_db(data)
@@ -112,7 +136,7 @@ class BlackjackView(discord.ui.View):
             self.finished = True
             for child in self.children:
                 child.disabled = True
-            
+
             raw_profit = int(self.bet * 1.5)
             tax = int(raw_profit * 0.10)
             net_profit = raw_profit - tax
@@ -123,7 +147,7 @@ class BlackjackView(discord.ui.View):
 
             embed = self.build_embed(
                 show_dealer=True,
-                outcome=f"🌟 **NGŨ LINH THẦN THÁNH (5 LÁ)!**\n"
+                outcome=f"🌟 **NGŨ LINH THẦN THÁNH (5 LÁ $<= 21$)!**\n"
                         f"🎉 Bạn nhận **+{net_profit:,}** {COIN} *(Đã khấu trừ 10% thuế: -{tax:,} {COIN})*!\n"
                         f"💰 Ví hiện tại: **{u['wallet']:,}** {COIN}.",
                 color=discord.Color.gold()
@@ -142,28 +166,89 @@ class BlackjackView(discord.ui.View):
             child.disabled = True
 
         p_val = calculate_hand(self.player_hand)
+        p_ngu_linh = is_ngu_linh(self.player_hand)
+
+        # Nhà cái rút bài: tối thiểu 17 điểm hoặc tối đa 5 lá
         while calculate_hand(self.dealer_hand) < 17 and len(self.dealer_hand) < 5:
             self.dealer_hand.append(draw_card())
         d_val = calculate_hand(self.dealer_hand)
+        d_ngu_linh = is_ngu_linh(self.dealer_hand)
 
         data = load_db()
         u = get_user(data, self.user.id)
 
-        if d_val > 21 or (p_val > d_val and p_val <= 21):
-            raw_profit = self.bet
+        # 1. So sánh trường hợp Ngũ Linh
+        if p_ngu_linh and d_ngu_linh:
+            if p_val < d_val:
+                raw_profit = int(self.bet * 1.5)
+                tax = int(raw_profit * 0.10)
+                net_profit = raw_profit - tax
+                u["wallet"] += net_profit
+                record_game(u, True, net_profit)
+                add_to_treasury(data, tax)
+                outcome = f"🌟 **CẢ HAI ĐỀU NGŨ LINH — BẠN THẮNG DO ÍT ĐIỂM HƠN ({p_val} < {d_val})!**\n" \
+                          f"🏆 Thắng: **+{net_profit:,}** {COIN} *(Thuế 10%: -{tax:,} {COIN})*! Ví: **{u['wallet']:,}** {COIN}."
+                color = discord.Color.gold()
+            elif p_val > d_val:
+                u["wallet"] -= self.bet
+                record_game(u, False, -self.bet)
+                outcome = f"💀 **CẢ HAI ĐỀU NGŨ LINH — NHÀ CÁI THẮNG DO ÍT ĐIỂM HƠN ({d_val} < {p_val})!**\n" \
+                          f"💸 Mất **-{self.bet:,}** {COIN}! Ví: **{u['wallet']:,}** {COIN}."
+                color = discord.Color.red()
+            else:
+                # Hòa ngũ linh bằng điểm
+                outcome = f"🤝 **CẢ HAI CÙNG NGŨ LINH BẰNG ĐIỂM ({p_val} ĐIỂM) — HÒA NHAU!**\n" \
+                          f"✨ Hoàn lại tiền cược **{self.bet:,}** {COIN}! Ví giữ nguyên: **{u['wallet']:,}** {COIN}."
+                color = discord.Color.yellow()
+        elif p_ngu_linh:
+            raw_profit = int(self.bet * 1.5)
             tax = int(raw_profit * 0.10)
             net_profit = raw_profit - tax
             u["wallet"] += net_profit
             record_game(u, True, net_profit)
             add_to_treasury(data, tax)
-            outcome = f"🎉 **BẠN ĐÃ CHIẾN THẮNG ({p_val} vs {d_val})!**\n" \
-                      f"🏆 Thắng nhận: **+{net_profit:,}** {COIN} *(Thuế 10%: -{tax:,} {COIN})*! Ví: **{u['wallet']:,}** {COIN}."
-            color = discord.Color.green()
-        else:
+            outcome = f"🌟 **NGŨ LINH THẦN THÁNH (5 LÁ $<= 21$)!**\n" \
+                      f"🏆 Thắng: **+{net_profit:,}** {COIN} *(Thuế 10%: -{tax:,} {COIN})*! Ví: **{u['wallet']:,}** {COIN}."
+            color = discord.Color.gold()
+        elif d_ngu_linh:
             u["wallet"] -= self.bet
             record_game(u, False, -self.bet)
-            outcome = f"💀 **NHÀ CÁI THẮNG ({d_val} vs {p_val})!**\n💸 Bạn mất **-{self.bet:,}** {COIN}! Ví: **{u['wallet']:,}** {COIN}."
+            outcome = f"💀 **NHÀ CÁI ĐẠT NGŨ LINH (5 LÁ $<= 21$)!**\n" \
+                      f"💸 Bạn mất **-{self.bet:,}** {COIN}! Ví: **{u['wallet']:,}** {COIN}."
             color = discord.Color.red()
+        else:
+            # 2. So sánh điểm số thông thường
+            if d_val > 21:
+                raw_profit = self.bet
+                tax = int(raw_profit * 0.10)
+                net_profit = raw_profit - tax
+                u["wallet"] += net_profit
+                record_game(u, True, net_profit)
+                add_to_treasury(data, tax)
+                outcome = f"🎉 **NHÀ CÁI ĐÃ BỊ QUẮC ({d_val} > 21) — BẠN CHIẾN THẮNG!**\n" \
+                          f"🏆 Thắng nhận: **+{net_profit:,}** {COIN} *(Thuế 10%: -{tax:,} {COIN})*! Ví: **{u['wallet']:,}** {COIN}."
+                color = discord.Color.green()
+            elif p_val > d_val:
+                raw_profit = self.bet
+                tax = int(raw_profit * 0.10)
+                net_profit = raw_profit - tax
+                u["wallet"] += net_profit
+                record_game(u, True, net_profit)
+                add_to_treasury(data, tax)
+                outcome = f"🎉 **BẠN ĐÃ CHIẾN THẮNG ({p_val} vs {d_val})!**\n" \
+                          f"🏆 Thắng nhận: **+{net_profit:,}** {COIN} *(Thuế 10%: -{tax:,} {COIN})*! Ví: **{u['wallet']:,}** {COIN}."
+                color = discord.Color.green()
+            elif p_val == d_val:
+                # 🚨 FIX LỖI HÒA: HOÀN LẠI TIỀN CƯỢC, TUYỆT ĐỐI KHÔNG ĐƯỢC TRỪ TIỀN!
+                outcome = f"🤝 **HÒA NHAU VỚI NHÀ CÁI ({p_val} vs {d_val})!**\n" \
+                          f"✨ Hoàn lại tiền cược **{self.bet:,}** {COIN}! Số dư ví giữ nguyên: **{u['wallet']:,}** {COIN}."
+                color = discord.Color.yellow()
+            else:
+                u["wallet"] -= self.bet
+                record_game(u, False, -self.bet)
+                outcome = f"💀 **NHÀ CÁI THẮNG ({d_val} vs {p_val})!**\n" \
+                          f"💸 Bạn mất **-{self.bet:,}** {COIN}! Ví: **{u['wallet']:,}** {COIN}."
+                color = discord.Color.red()
 
         save_db(data)
         embed = self.build_embed(show_dealer=True, outcome=outcome, color=color)
@@ -385,24 +470,112 @@ class Casino(commands.Cog):
         p_hand = [draw_card(), draw_card()]
         d_hand = [draw_card(), draw_card()]
 
-        if calculate_hand(p_hand) == 21:
-            raw_profit = int(bet_val * 1.5)
-            tax = int(raw_profit * 0.10)
-            net_profit = raw_profit - tax
-            u["wallet"] += net_profit
-            record_game(u, True, net_profit)
-            add_to_treasury(data, tax)
-            save_db(data)
+        p_xb = is_xi_bang(p_hand)
+        p_xd = is_xi_dach(p_hand)
+        d_xb = is_xi_bang(d_hand)
+        d_xd = is_xi_dach(d_hand)
 
-            embed = discord.Embed(
-                title="🃏 XÌ DÁCH TỰ NHIÊN (BLACKJACK 21)! 🌟",
-                description=f"**Bài Của Bạn:** {' '.join(card_to_str(c) for c in p_hand)} `(21 ĐIỂM)`\n"
-                            f"🏆 Thắng gấp rưỡi: **+{net_profit:,}** {COIN} *(Thuế 10%: -{tax:,} {COIN})*!\n"
-                            f"💰 Ví: **{u['wallet']:,}** {COIN}",
-                color=discord.Color.gold()
-            )
-            await ctx.send(embed=embed)
-            return
+        # 🎯 Xử lý các thế bài đặc biệt lật bài ngay đầu ván (Xì Bàng & Xì Dách)
+        if p_xb or p_xd or d_xb or d_xd:
+            p_cards_str = get_hand_display(p_hand)
+            d_cards_str = get_hand_display(d_hand)
+
+            if p_xb and d_xb:
+                # Cả 2 cùng Xì Bàng -> Hòa
+                embed = discord.Embed(
+                    title="🃏 SONG LONG XÌ BÀNG HÒA NHAU! 🤝",
+                    description=f"• **Bài Của Bạn:** {p_cards_str}\n"
+                                f"• **Bài Nhà Cái:** {d_cards_str}\n\n"
+                                f"🤝 Cả 2 đều có Xì Bàng! Hoàn lại tiền cược **{bet_val:,}** {COIN}.\n"
+                                f"💰 Ví: **{u['wallet']:,}** {COIN}",
+                    color=discord.Color.yellow()
+                )
+                await ctx.send(embed=embed)
+                return
+            elif p_xb:
+                # Người chơi Xì Bàng -> Ăn gấp đôi x2
+                raw_profit = int(bet_val * 2.0)
+                tax = int(raw_profit * 0.10)
+                net_profit = raw_profit - tax
+                u["wallet"] += net_profit
+                record_game(u, True, net_profit)
+                add_to_treasury(data, tax)
+                save_db(data)
+
+                embed = discord.Embed(
+                    title="🌟 XÌ BÀNG THẦN THÁNH (2 CÂY ÁT)! 👑",
+                    description=f"• **Bài Của Bạn:** {p_cards_str}\n"
+                                f"• **Bài Nhà Cái:** {d_cards_str}\n\n"
+                                f"🏆 Bạn đã hạ gục Nhà Cái! Thắng gấp đôi: **+{net_profit:,}** {COIN} *(Thuế 10%: -{tax:,} {COIN})*!\n"
+                                f"💰 Ví hiện tại: **{u['wallet']:,}** {COIN}",
+                    color=discord.Color.gold()
+                )
+                await ctx.send(embed=embed)
+                return
+            elif d_xb:
+                # Nhà cái Xì Bàng
+                u["wallet"] -= bet_val
+                record_game(u, False, -bet_val)
+                save_db(data)
+
+                embed = discord.Embed(
+                    title="💀 NHÀ CÁI XÌ BÀNG ĂN SẠCH! 🎰",
+                    description=f"• **Bài Của Bạn:** {p_cards_str}\n"
+                                f"• **Bài Nhà Cái:** {d_cards_str}\n\n"
+                                f"💸 Bạn đã mất **-{bet_val:,}** {COIN}!\n"
+                                f"💰 Ví còn: **{u['wallet']:,}** {COIN}",
+                    color=discord.Color.red()
+                )
+                await ctx.send(embed=embed)
+                return
+            elif p_xd and d_xd:
+                # Cả 2 cùng Xì Dách -> Hòa
+                embed = discord.Embed(
+                    title="🃏 CẢ HAI CÙNG XÌ DÁCH HÒA NHAU! 🤝",
+                    description=f"• **Bài Của Bạn:** {p_cards_str}\n"
+                                f"• **Bài Nhà Cái:** {d_cards_str}\n\n"
+                                f"🤝 Hòa nhau! Hoàn lại tiền cược **{bet_val:,}** {COIN}.\n"
+                                f"💰 Ví: **{u['wallet']:,}** {COIN}",
+                    color=discord.Color.yellow()
+                )
+                await ctx.send(embed=embed)
+                return
+            elif p_xd:
+                # Người chơi Xì Dách -> Ăn gấp rưỡi x1.5
+                raw_profit = int(bet_val * 1.5)
+                tax = int(raw_profit * 0.10)
+                net_profit = raw_profit - tax
+                u["wallet"] += net_profit
+                record_game(u, True, net_profit)
+                add_to_treasury(data, tax)
+                save_db(data)
+
+                embed = discord.Embed(
+                    title="🃏 XÌ DÁCH TỰ NHIÊN (BLACKJACK 21)! 🌟",
+                    description=f"• **Bài Của Bạn:** {p_cards_str}\n"
+                                f"• **Bài Nhà Cái:** {d_cards_str}\n\n"
+                                f"🏆 Thắng gấp rưỡi: **+{net_profit:,}** {COIN} *(Thuế 10%: -{tax:,} {COIN})*!\n"
+                                f"💰 Ví: **{u['wallet']:,}** {COIN}",
+                    color=discord.Color.gold()
+                )
+                await ctx.send(embed=embed)
+                return
+            elif d_xd:
+                # Nhà cái Xì Dách
+                u["wallet"] -= bet_val
+                record_game(u, False, -bet_val)
+                save_db(data)
+
+                embed = discord.Embed(
+                    title="💀 NHÀ CÁI XÌ DÁCH! 🎰",
+                    description=f"• **Bài Của Bạn:** {p_cards_str}\n"
+                                f"• **Bài Nhà Cái:** {d_cards_str}\n\n"
+                                f"💸 Bạn đã mất **-{bet_val:,}** {COIN}!\n"
+                                f"💰 Ví còn: **{u['wallet']:,}** {COIN}",
+                    color=discord.Color.red()
+                )
+                await ctx.send(embed=embed)
+                return
 
         view = BlackjackView(ctx.author, bet_val, p_hand, d_hand)
         embed = view.build_embed()
@@ -437,24 +610,105 @@ class Casino(commands.Cog):
         p_hand = [draw_card(), draw_card()]
         d_hand = [draw_card(), draw_card()]
 
-        if calculate_hand(p_hand) == 21:
-            raw_profit = int(bet_val * 1.5)
-            tax = int(raw_profit * 0.10)
-            net_profit = raw_profit - tax
-            u["wallet"] += net_profit
-            record_game(u, True, net_profit)
-            add_to_treasury(data, tax)
-            save_db(data)
+        p_xb = is_xi_bang(p_hand)
+        p_xd = is_xi_dach(p_hand)
+        d_xb = is_xi_bang(d_hand)
+        d_xd = is_xi_dach(d_hand)
 
-            embed = discord.Embed(
-                title="🃏 XÌ DÁCH TỰ NHIÊN (BLACKJACK 21)! 🌟",
-                description=f"**Bài Của Bạn:** {' '.join(card_to_str(c) for c in p_hand)} `(21 ĐIỂM)`\n"
-                            f"🏆 Thắng gấp rưỡi: **+{net_profit:,}** {COIN} *(Thuế 10%: -{tax:,} {COIN})*!\n"
-                            f"💰 Ví: **{u['wallet']:,}** {COIN}",
-                color=discord.Color.gold()
-            )
-            await interaction.response.send_message(embed=embed)
-            return
+        if p_xb or p_xd or d_xb or d_xd:
+            p_cards_str = get_hand_display(p_hand)
+            d_cards_str = get_hand_display(d_hand)
+
+            if p_xb and d_xb:
+                embed = discord.Embed(
+                    title="🃏 SONG LONG XÌ BÀNG HÒA NHAU! 🤝",
+                    description=f"• **Bài Của Bạn:** {p_cards_str}\n"
+                                f"• **Bài Nhà Cái:** {d_cards_str}\n\n"
+                                f"🤝 Cả 2 đều có Xì Bàng! Hoàn lại tiền cược **{bet_val:,}** {COIN}.\n"
+                                f"💰 Ví: **{u['wallet']:,}** {COIN}",
+                    color=discord.Color.yellow()
+                )
+                await interaction.response.send_message(embed=embed)
+                return
+            elif p_xb:
+                raw_profit = int(bet_val * 2.0)
+                tax = int(raw_profit * 0.10)
+                net_profit = raw_profit - tax
+                u["wallet"] += net_profit
+                record_game(u, True, net_profit)
+                add_to_treasury(data, tax)
+                save_db(data)
+
+                embed = discord.Embed(
+                    title="🌟 XÌ BÀNG THẦN THÁNH (2 CÂY ÁT)! 👑",
+                    description=f"• **Bài Của Bạn:** {p_cards_str}\n"
+                                f"• **Bài Nhà Cái:** {d_cards_str}\n\n"
+                                f"🏆 Bạn đã hạ gục Nhà Cái! Thắng gấp đôi: **+{net_profit:,}** {COIN} *(Thuế 10%: -{tax:,} {COIN})*!\n"
+                                f"💰 Ví hiện tại: **{u['wallet']:,}** {COIN}",
+                    color=discord.Color.gold()
+                )
+                await interaction.response.send_message(embed=embed)
+                return
+            elif d_xb:
+                u["wallet"] -= bet_val
+                record_game(u, False, -bet_val)
+                save_db(data)
+
+                embed = discord.Embed(
+                    title="💀 NHÀ CÁI XÌ BÀNG ĂN SẠCH! 🎰",
+                    description=f"• **Bài Của Bạn:** {p_cards_str}\n"
+                                f"• **Bài Nhà Cái:** {d_cards_str}\n\n"
+                                f"💸 Bạn đã mất **-{bet_val:,}** {COIN}!\n"
+                                f"💰 Ví còn: **{u['wallet']:,}** {COIN}",
+                    color=discord.Color.red()
+                )
+                await interaction.response.send_message(embed=embed)
+                return
+            elif p_xd and d_xd:
+                embed = discord.Embed(
+                    title="🃏 CẢ HAI CÙNG XÌ DÁCH HÒA NHAU! 🤝",
+                    description=f"• **Bài Của Bạn:** {p_cards_str}\n"
+                                f"• **Bài Nhà Cái:** {d_cards_str}\n\n"
+                                f"🤝 Hòa nhau! Hoàn lại tiền cược **{bet_val:,}** {COIN}.\n"
+                                f"💰 Ví: **{u['wallet']:,}** {COIN}",
+                    color=discord.Color.yellow()
+                )
+                await interaction.response.send_message(embed=embed)
+                return
+            elif p_xd:
+                raw_profit = int(bet_val * 1.5)
+                tax = int(raw_profit * 0.10)
+                net_profit = raw_profit - tax
+                u["wallet"] += net_profit
+                record_game(u, True, net_profit)
+                add_to_treasury(data, tax)
+                save_db(data)
+
+                embed = discord.Embed(
+                    title="🃏 XÌ DÁCH TỰ NHIÊN (BLACKJACK 21)! 🌟",
+                    description=f"• **Bài Của Bạn:** {p_cards_str}\n"
+                                f"• **Bài Nhà Cái:** {d_cards_str}\n\n"
+                                f"🏆 Thắng gấp rưỡi: **+{net_profit:,}** {COIN} *(Thuế 10%: -{tax:,} {COIN})*!\n"
+                                f"💰 Ví: **{u['wallet']:,}** {COIN}",
+                    color=discord.Color.gold()
+                )
+                await interaction.response.send_message(embed=embed)
+                return
+            elif d_xd:
+                u["wallet"] -= bet_val
+                record_game(u, False, -bet_val)
+                save_db(data)
+
+                embed = discord.Embed(
+                    title="💀 NHÀ CÁI XÌ DÁCH! 🎰",
+                    description=f"• **Bài Của Bạn:** {p_cards_str}\n"
+                                f"• **Bài Nhà Cái:** {d_cards_str}\n\n"
+                                f"💸 Bạn đã mất **-{bet_val:,}** {COIN}!\n"
+                                f"💰 Ví còn: **{u['wallet']:,}** {COIN}",
+                    color=discord.Color.red()
+                )
+                await interaction.response.send_message(embed=embed)
+                return
 
         view = BlackjackView(interaction.user, bet_val, p_hand, d_hand)
         embed = view.build_embed()
@@ -622,7 +876,6 @@ class Casino(commands.Cog):
         else:
             sample = random.sample(symbols, 3)
             s1, s2, s3 = sample[0], sample[1], sample[2]
-            # Đảm bảo thua không vô tình ra 3 hình x10
             if s1 in ["7️⃣", "👑"] and s1 == s2 == s3:
                 s3 = "🍎"
 

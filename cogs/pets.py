@@ -4,7 +4,7 @@ from discord.ext import commands
 import random
 import time
 from typing import Optional
-from cogs.database import load_db, save_db, get_user
+from cogs.database import load_db, save_db, get_user, add_to_treasury
 
 COIN = "💵"
 
@@ -178,25 +178,28 @@ class Pets(commands.Cog):
         power1 = p1["atk"] * 2 + p1["hp"] + random.randint(1, 30)
         power2 = p2["atk"] * 2 + p2["hp"] + random.randint(1, 30)
 
+        tax = int(bet * 0.10)
+        net_win = bet - tax
         if power1 > power2:
-            u1["wallet"] += bet
+            u1["wallet"] += net_win
             u2["wallet"] -= bet
             winner = ctx.author
             loser = opponent
             w_pet = p1
         else:
-            u2["wallet"] += bet
+            u2["wallet"] += net_win
             u1["wallet"] -= bet
             winner = opponent
             loser = ctx.author
             w_pet = p2
 
+        add_to_treasury(data, tax)
         save_db(data)
         embed = discord.Embed(
             title="⚔️ TRẬN ĐẤU THÚ CƯNG NẢY LỬA! 🐾",
             description=f"{p1['name']} {p1['icon']} (của {ctx.author.mention}) **VS** {p2['name']} {p2['icon']} (của {opponent.mention})\n\n"
                         f"🏆 **CHIẾN THẮNG:** {winner.mention} với thú cưng {w_pet['name']}!\n"
-                        f"💰 Tiền thưởng: **+{bet:,}** {COIN} (từ ví của {loser.mention})!",
+                        f"💰 Tiền thưởng: **+{net_win:,}** {COIN} *(Thuế 10%: -{tax:,} {COIN})*!",
             color=discord.Color.gold()
         )
         await ctx.send(embed=embed)

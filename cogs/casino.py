@@ -910,16 +910,15 @@ class Casino(commands.Cog):
             color = discord.Color.red()
 
         save_db(data)
-        footer_note = "Thuế thắng: 10% • Cược trên 10 Tỷ: Khóa Jackpot x10 chống phá sản ngân khố!" if is_above_10b else "Thuế thắng: 10% • Tỷ lệ nổ hũ x10 khi cược dưới 10 Tỷ!"
         embed = discord.Embed(
             title="🎰 MÁY XÈNG QUAY HŨ (SLOTS) 🎰",
             description=f"{slot_str}\n\n{msg}\n💰 Ví hiện tại: **{u['wallet']:,}** {COIN}",
             color=color
         )
-        embed.set_footer(text=footer_note)
+        embed.set_footer(text="Thuế thắng: 10% nộp vào Kho Bạc Bot")
         await ctx.send(embed=embed)
 
-    @app_commands.command(name="slots", description="Quay hũ máy xèng hoa quả (Cược > 10B khóa x10 jackpot)")
+    @app_commands.command(name="slots", description="Quay hũ máy xèng hoa quả trúng Jackpot")
     async def slash_slot(self, interaction: discord.Interaction, tien_cuoc: str):
         data = load_db()
         apply_bank_tax(data)
@@ -996,13 +995,12 @@ class Casino(commands.Cog):
             color = discord.Color.red()
 
         save_db(data)
-        footer_note = "Thuế thắng: 10% • Cược trên 10 Tỷ: Khóa Jackpot x10 chống phá sản ngân khố!" if is_above_10b else "Thuế thắng: 10% • Tỷ lệ nổ hũ x10 khi cược dưới 10 Tỷ!"
         embed = discord.Embed(
             title="🎰 MÁY XÈNG QUAY HŨ (SLOTS) 🎰",
             description=f"{slot_str}\n\n{msg}\n💰 Ví hiện tại: **{u['wallet']:,}** {COIN}",
             color=color
         )
-        embed.set_footer(text=footer_note)
+        embed.set_footer(text="Thuế thắng: 10% nộp vào Kho Bạc Bot")
         await interaction.response.send_message(embed=embed)
 
     # ================= 5. BẦU CUA =================

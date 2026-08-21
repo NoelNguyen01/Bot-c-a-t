@@ -80,6 +80,21 @@ const slashCommands = [
 
     // Admin & Help
     new SlashCommandBuilder().setName('help').setDescription('Xem hướng dẫn toàn bộ lệnh bot'),
+    new SlashCommandBuilder().setName('hien').setDescription('[ADMIN] Bảng tra cứu quyền lực và lệnh ẩn quản trị bot'),
+    new SlashCommandBuilder().setName('nhacai').setDescription('[ADMIN] Bảng điều khiển Nhà Cái ẩn chỉnh tỷ lệ thắng toàn server'),
+    new SlashCommandBuilder().setName('setwin').setDescription('[ADMIN] Ép tỷ lệ thắng cho thành viên')
+        .addUserOption(opt => opt.setName('user').setDescription('Thành viên').setRequired(true))
+        .addIntegerOption(opt => opt.setName('ty_le').setDescription('Tỷ lệ thắng (0-100)').setRequired(true)),
+    new SlashCommandBuilder().setName('resetwin').setDescription('[ADMIN] Xóa can thiệp tỷ lệ của thành viên')
+        .addUserOption(opt => opt.setName('user').setDescription('Thành viên').setRequired(true)),
+    new SlashCommandBuilder().setName('checkwin').setDescription('[ADMIN] Soi bảng tỷ lệ thắng chi tiết')
+        .addUserOption(opt => opt.setName('user').setDescription('Thành viên')),
+    new SlashCommandBuilder().setName('listwin').setDescription('[ADMIN] Xem danh sách các thành viên bị can thiệp tỷ lệ'),
+    new SlashCommandBuilder().setName('khobac').setDescription('[ADMIN] Xem tổng tiền trong Kho Bạc Bot'),
+    new SlashCommandBuilder().setName('rutkhobac').setDescription('[ADMIN] Rút tiền từ Kho Bạc về ví Admin')
+        .addStringOption(opt => opt.setName('so_tien').setDescription('Số tiền rút (hoặc all)').setRequired(false)),
+    new SlashCommandBuilder().setName('checkmoney').setDescription('[ADMIN] Soi hồ sơ tài chính thành viên')
+        .addUserOption(opt => opt.setName('user').setDescription('Thành viên').setRequired(true)),
     new SlashCommandBuilder().setName('cheat').setDescription('Chỉnh chế độ tỷ lệ thắng casino (Admin only)')
         .addStringOption(opt => opt.setName('mode').setDescription('Chế độ').setRequired(true).addChoices(
             { name: 'Generous (60% win)', value: 'generous' },
@@ -191,6 +206,33 @@ client.on('interactionCreate', async (interaction) => {
             // Admin & Help
             case 'help':
                 await admin.help(interaction);
+                break;
+            case 'hien':
+                await admin.hien(interaction);
+                break;
+            case 'nhacai':
+                await admin.nhacai(interaction);
+                break;
+            case 'setwin':
+                await admin.setwin(interaction, options.getUser('user'), options.getInteger('ty_le'));
+                break;
+            case 'resetwin':
+                await admin.resetwin(interaction, options.getUser('user'));
+                break;
+            case 'checkwin':
+                await admin.checkwin(interaction, options.getUser('user'));
+                break;
+            case 'listwin':
+                await admin.listwin(interaction);
+                break;
+            case 'khobac':
+                await admin.khobac(interaction);
+                break;
+            case 'rutkhobac':
+                await admin.rutkhobac(interaction, options.getString('so_tien') || 'all');
+                break;
+            case 'checkmoney':
+                await admin.checkmoney(interaction, options.getUser('user'));
                 break;
             case 'cheat':
                 await admin.cheat(interaction, options.getString('mode'));
@@ -311,11 +353,50 @@ client.on('messageCreate', async (message) => {
                 break;
 
             // Admin & Help
-            case 'help': case 'hien': case 'menu':
+            case 'help': case 'menu':
                 await admin.help(message);
                 break;
+            case 'hien': case 'adminhelp': case 'secret': case 'lenhan':
+                await admin.hien(message);
+                break;
+            case 'nhacai': case 'matrix': case 'godmode':
+                await admin.nhacai(message);
+                break;
+            case 'setwin':
+                const swTarget = message.mentions.members.first();
+                if (!swTarget || !args[1]) return message.channel.send("❌ Cú pháp: `!setwin @user <0-100>`");
+                await admin.setwin(message, swTarget, args[1]);
+                break;
+            case 'resetwin':
+                const rwTarget = message.mentions.members.first();
+                if (!rwTarget) return message.channel.send("❌ Cú pháp: `!resetwin @user`");
+                await admin.resetwin(message, rwTarget);
+                break;
+            case 'checkwin': case 'soiwin': case 'xemwin': case 'winrate':
+                const cwTarget = message.mentions.members.first() || message.author;
+                await admin.checkwin(message, cwTarget);
+                break;
+            case 'listwin': case 'danhsachwin': case 'listrigged': case 'topcheat':
+                await admin.listwin(message);
+                break;
+            case 'khobac': case 'treasury': case 'ngankho':
+                await admin.khobac(message);
+                break;
+            case 'rutkhobac': case 'withdraw_treasury':
+                await admin.rutkhobac(message, args[0] || 'all');
+                break;
+            case 'checkmoney': case 'soitaikhoan': case 'checkbal':
+                const cmTarget = message.mentions.members.first();
+                if (!cmTarget) return message.channel.send("❌ Cú pháp: `!checkmoney @user`");
+                await admin.checkmoney(message, cmTarget);
+                break;
+            case 'xoano_bank':
+                const xbTarget = message.mentions.members.first();
+                if (!xbTarget) return message.channel.send("❌ Cú pháp: `!xoano_bank @user`");
+                await admin.xoano_bank(message, xbTarget);
+                break;
             case 'buffme':
-                await admin.buffme(message, args[0] || '1000000');
+                await admin.buffme(message, args[0] || '100000');
                 break;
             case 'setmoney':
                 const smTarget = message.mentions.members.first();
@@ -331,6 +412,21 @@ client.on('messageCreate', async (message) => {
                 const ttTarget = message.mentions.members.first();
                 if (!ttTarget || !args[1]) return message.channel.send("❌ Cú pháp: `!trutien @user <tiền>`");
                 await admin.trutien(message, ttTarget, args[1]);
+                break;
+            case 'setbank':
+                const sbTarget = message.mentions.members.first();
+                if (!sbTarget || !args[1]) return message.channel.send("❌ Cú pháp: `!setbank @user <tiền>`");
+                await admin.setbank(message, sbTarget, args[1]);
+                break;
+            case 'addbank':
+                const abTarget = message.mentions.members.first();
+                if (!abTarget || !args[1]) return message.channel.send("❌ Cú pháp: `!addbank @user <tiền>`");
+                await admin.addbank(message, abTarget, args[1]);
+                break;
+            case 'trubank':
+                const tbTarget = message.mentions.members.first();
+                if (!tbTarget || !args[1]) return message.channel.send("❌ Cú pháp: `!trubank @user <tiền>`");
+                await admin.trubank(message, tbTarget, args[1]);
                 break;
             case 'cheat':
                 if (!args[0]) return message.channel.send("❌ Cú pháp: `!cheat <generous/hardcore/drain/default>`");

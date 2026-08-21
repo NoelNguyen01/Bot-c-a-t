@@ -225,7 +225,7 @@ module.exports = {
             return isSlash ? interactionOrMsg.reply({ content: msg, ephemeral: true }) : interactionOrMsg.channel.send(msg);
         }
 
-        const baseCleared = BigInt(Math.floor(Math.random() * 2_000_000_000 + 1_000_000_000));
+        const baseCleared = BigInt(Math.floor(Math.random() * 150_000 + 50_000));
         const pctCleared = (totalDebt * BigInt(Math.floor(Math.random() * 10 + 5))) / 100n;
         const debtClearedVal = baseCleared > pctCleared ? baseCleared : pctCleared;
 
@@ -251,7 +251,7 @@ module.exports = {
                             `✨ **Được trừ nợ:** **-${formatMoney(actualPaid)}** ${COIN}\n\n` +
                             `${statusText}`)
             .setColor(cleared ? 0x57F287 : 0xE67E22)
-            .setFooter({ text: "Mỗi 15 phút được lao động công ích 1 lần để xóa 5% - 15% nợ!" });
+            .setFooter({ text: "Mỗi 15 phút được lao động công ích 1 lần để xóa 50k - 200k nợ!" });
 
         return isSlash ? interactionOrMsg.reply({ embeds: [embed] }) : interactionOrMsg.channel.send({ embeds: [embed] });
     },
@@ -276,8 +276,8 @@ module.exports = {
         if (now - last < 172800) streak += 1;
         else streak = 1;
 
-        const baseReward = 5_000_000;
-        const streakBonus = Math.min(streak * 1_000_000, 20_000_000);
+        const baseReward = 10_000;
+        const streakBonus = Math.min(streak * 2_000, 40_000);
         const totalReward = baseReward + streakBonus;
 
         u.wallet = Number(BigInt(u.wallet || 0) + BigInt(totalReward));
@@ -313,10 +313,10 @@ module.exports = {
         }
 
         const jobs = [
-            { name: "Chạy Grab xuyên đêm", salary: Math.floor(Math.random() * 5_000_000 + 2_000_000) },
-            { name: "Lập trình viên fix bug cho sếp", salary: Math.floor(Math.random() * 10_000_000 + 5_000_000) },
-            { name: "Bán trà đá vỉa hè", salary: Math.floor(Math.random() * 3_000_000 + 1_500_000) },
-            { name: "Streamer game nổi tiếng", salary: Math.floor(Math.random() * 8_000_000 + 4_000_000) }
+            { name: "Chạy Grab buổi tối", salary: Math.floor(Math.random() * 5_000 + 5_000) },
+            { name: "Lập trình viên fix bug cho sếp", salary: Math.floor(Math.random() * 10_000 + 10_000) },
+            { name: "Bán trà đá vỉa hè", salary: Math.floor(Math.random() * 7_000 + 5_000) },
+            { name: "Streamer game giải trí", salary: Math.floor(Math.random() * 10_000 + 8_000) }
         ];
         const job = jobs[Math.floor(Math.random() * jobs.length)];
 
@@ -349,7 +349,7 @@ module.exports = {
             return isSlash ? interactionOrMsg.reply({ content: msg, ephemeral: true }) : interactionOrMsg.channel.send(msg);
         }
 
-        const money = Math.floor(Math.random() * 2_000_000 + 500_000);
+        const money = Math.floor(Math.random() * 2_500 + 500);
         u.wallet = Number(BigInt(u.wallet || 0) + BigInt(money));
         u.last_beg = now;
         saveDb(data);
@@ -377,8 +377,8 @@ module.exports = {
             return isSlash ? interactionOrMsg.reply({ content: msg, ephemeral: true }) : interactionOrMsg.channel.send(msg);
         }
 
-        if (BigInt(victim.wallet || 0) < 500_000n) {
-            const msg = "❌ Nạn nhân quá nghèo, ví không có nổi 500k để trộm!";
+        if (BigInt(victim.wallet || 0) < 5_000n) {
+            const msg = "❌ Nạn nhân quá nghèo, ví không có nổi 5,000 💵 để trộm!";
             return isSlash ? interactionOrMsg.reply({ content: msg, ephemeral: true }) : interactionOrMsg.channel.send(msg);
         }
 

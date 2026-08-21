@@ -675,8 +675,8 @@ class Economy(commands.Cog):
             return
 
         streak = streak + 1 if diff < 172800 else 1
-        base = random.randint(1_000_000, 5_000_000)
-        bonus = min(streak * 200_000, 5_000_000)
+        base = random.randint(10_000, 20_000)
+        bonus = min(streak * 2_000, 40_000)
         earned = base + bonus
 
         # 🚨 CƠ CHẾ XIẾT NỢ TỰ ĐỘNG (50%)
@@ -724,8 +724,8 @@ class Economy(commands.Cog):
             return
 
         streak = streak + 1 if diff < 172800 else 1
-        base = random.randint(1_000_000, 5_000_000)
-        bonus = min(streak * 200_000, 5_000_000)
+        base = random.randint(10_000, 20_000)
+        bonus = min(streak * 2_000, 40_000)
         earned = base + bonus
 
         # 🚨 CƠ CHẾ XIẾT NỢ TỰ ĐỘNG (50%)
@@ -770,11 +770,11 @@ class Economy(commands.Cog):
             return
 
         jobs = [
-            ("Lập trình bot Discord tỷ đô", random.randint(1_000_000, 3_000_000)),
-            ("Phục vụ quán Cà Phê Mèo Neko VIP", random.randint(800_000, 2_500_000)),
-            ("Giao đồ ăn nhanh cho các Đại Gia", random.randint(700_000, 2_000_000)),
-            ("Bán trà sữa dát vàng trân châu", random.randint(800_000, 2_200_000)),
-            ("Chăm sóc thú cưng Hoàng Gia", random.randint(900_000, 2_800_000))
+            ("Lập trình bot Discord", random.randint(10_000, 20_000)),
+            ("Phục vụ quán Cà Phê Mèo Neko VIP", random.randint(5_000, 15_000)),
+            ("Giao đồ ăn nhanh", random.randint(6_000, 12_000)),
+            ("Bán trà sữa trân châu", random.randint(5_000, 14_000)),
+            ("Chăm sóc thú cưng Hoàng Gia", random.randint(8_000, 18_000))
         ]
         job, wage = random.choice(jobs)
 
@@ -809,10 +809,10 @@ class Economy(commands.Cog):
             return
 
         jobs = [
-            ("Lập trình bot Discord tỷ đô", random.randint(1_000_000, 3_000_000)),
-            ("Phục vụ quán Cà Phê Mèo Neko VIP", random.randint(800_000, 2_500_000)),
-            ("Giao đồ ăn nhanh cho các Đại Gia", random.randint(700_000, 2_000_000)),
-            ("Bán trà sữa dát vàng trân châu", random.randint(800_000, 2_200_000))
+            ("Lập trình bot Discord", random.randint(10_000, 20_000)),
+            ("Phục vụ quán Cà Phê Mèo Neko VIP", random.randint(5_000, 15_000)),
+            ("Giao đồ ăn nhanh", random.randint(6_000, 12_000)),
+            ("Bán trà sữa trân châu", random.randint(5_000, 14_000))
         ]
         job, wage = random.choice(jobs)
 
@@ -849,7 +849,7 @@ class Economy(commands.Cog):
 
         u["last_beg"] = now
         if random.random() < 0.75:
-            amt = random.randint(100_000, 500_000)
+            amt = random.randint(500, 3_000)
             
             debt_msg = ""
             total_debt, principal, interest, is_overdue = calculate_loan_debt(data, ctx.author.id)
@@ -880,7 +880,7 @@ class Economy(commands.Cog):
 
         u["last_beg"] = now
         if random.random() < 0.75:
-            amt = random.randint(100_000, 500_000)
+            amt = random.randint(500, 3_000)
 
             debt_msg = ""
             total_debt, principal, interest, is_overdue = calculate_loan_debt(data, interaction.user.id)
@@ -917,11 +917,11 @@ class Economy(commands.Cog):
         v_wallet = victim.get("wallet", 0)
         r_wallet = robber.get("wallet", 0)
 
-        if r_wallet < 500_000:
-            await ctx.send("❌ Bạn cần ít nhất **500,000** tiền trong ví để nộp phạt nếu bị bắt!")
+        if r_wallet < 5_000:
+            await ctx.send("❌ Bạn cần ít nhất **5,000** tiền trong ví để nộp phạt nếu bị bắt!")
             return
-        if v_wallet < 500_000:
-            await ctx.send(f"❌ Ví của {target.mention} quá nghèo (dưới 500k tiền), tha cho nó đi!")
+        if v_wallet < 5_000:
+            await ctx.send(f"❌ Ví của {target.mention} quá nghèo (dưới 5k tiền), tha cho nó đi!")
             return
 
         robber["last_rob"] = now
@@ -1090,8 +1090,8 @@ class Economy(commands.Cog):
             await ctx.send(f"⏳ Bạn vừa đi lao động công ích mệt rồi, nghỉ ngơi **{rem // 60}p {rem % 60}s** nữa mới được cuốc đất tiếp!")
             return
 
-        # Tăng mức trừ nợ thích ứng lạm phát (5% - 15% tổng nợ hoặc tối thiểu 1B - 3B)
-        base_cleared = random.randint(1_000_000_000, 3_000_000_000)
+        # Mức trừ nợ cân bằng chuẩn: 50,000 - 200,000 hoặc 5% - 15% tổng nợ
+        base_cleared = random.randint(50_000, 200_000)
         pct_cleared = int(total_debt * random.uniform(0.05, 0.15))
         debt_cleared_val = max(base_cleared, pct_cleared)
 
@@ -1118,15 +1118,15 @@ class Economy(commands.Cog):
         embed = discord.Embed(
             title="👮 LAO ĐỘNG CÔNG ÍCH CHUỘC NỢ 🧹",
             description=f"**Con nợ:** {ctx.author.mention}\n"
-                        f"🔨 **Công việc:** *{task_name}*\n"
+                        f"🔨 **Công việc:** *${task_name}*\n"
                         f"✨ **Được trừ nợ:** **-{paid:,}** {COIN}\n\n"
                         f"{status_text}",
             color=color
         )
-        embed.set_footer(text="Mỗi 15 phút được lao động công ích 1 lần để xóa 5% - 15% nợ!")
+        embed.set_footer(text="Mỗi 15 phút được lao động công ích 1 lần để xóa 50k - 200k nợ!")
         await ctx.send(embed=embed)
 
-    @app_commands.command(name="laodong", description="Lao động công ích chuộc nợ ngân hàng (15 phút/lần, trừ 5% - 15% nợ)")
+    @app_commands.command(name="laodong", description="Lao động công ích chuộc nợ ngân hàng (15 phút/lần, trừ 50k - 200k nợ)")
     async def slash_laodong(self, interaction: discord.Interaction):
         data = load_db()
         apply_bank_tax(data)
@@ -1144,7 +1144,7 @@ class Economy(commands.Cog):
             await interaction.response.send_message(f"⏳ Bạn vừa đi lao động công ích mệt rồi, nghỉ ngơi **{rem // 60}p {rem % 60}s** nữa mới được cuốc đất tiếp!", ephemeral=True)
             return
 
-        base_cleared = random.randint(1_000_000_000, 3_000_000_000)
+        base_cleared = random.randint(50_000, 200_000)
         pct_cleared = int(total_debt * random.uniform(0.05, 0.15))
         debt_cleared_val = max(base_cleared, pct_cleared)
 

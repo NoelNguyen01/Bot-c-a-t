@@ -1,0 +1,16 @@
+{
+  "name": "neko-clone-bot",
+  "version": "2.0.0",
+  "description": "Neko Discord Bot - Full Economy, Casino, PvP & Sổ Nợ rewritten in JavaScript (discord.js v14)",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": ["discord", "bot", "economy", "casino", "blackjack", "taixiu", "discordjs"],
+  "author": "NoelNguyen",
+  "license": "ISC",
+  "dependencies": {
+    "discord.js": "^14.18.0",
+    "dotenv": "^16.4.7"
+  }
+}

@@ -11,7 +11,35 @@ const {
 
 const COIN = "💵";
 
+/**
+ * Kiểm tra bảo mật Admin:
+ * 1. Kiểm tra ID Chủ Server (guild.ownerId)
+ * 2. Kiểm tra quyền Administrator (member.permissions.has(PermissionFlagsBits.Administrator))
+ */
+function checkAdminPermission(interactionOrMsg) {
+    const isSlash = interactionOrMsg.isChatInputCommand?.();
+    const member = interactionOrMsg.member;
+    const guild = interactionOrMsg.guild;
+    const user = isSlash ? interactionOrMsg.user : (interactionOrMsg.author || interactionOrMsg.user);
+
+    if (!guild || !member || !user) return false;
+
+    // 1. Kiểm tra chính xác ID Chủ Sở Hữu Server (guild.ownerId)
+    if (guild.ownerId && String(guild.ownerId) === String(user.id)) {
+        return true;
+    }
+
+    // 2. Luôn kiểm tra quyền Administrator qua PermissionFlagsBits.Administrator
+    if (member.permissions && member.permissions.has(PermissionFlagsBits.Administrator)) {
+        return true;
+    }
+
+    return false;
+}
+
 module.exports = {
+    checkAdminPermission,
+
     async help(interactionOrMsg) {
         const isSlash = interactionOrMsg.isChatInputCommand?.();
         const embed = new EmbedBuilder()
@@ -73,8 +101,8 @@ module.exports = {
         const isSlash = interactionOrMsg.isChatInputCommand?.();
         const member = isSlash ? interactionOrMsg.member : interactionOrMsg.member;
 
-        if (!member.permissions.has(PermissionFlagsBits.Administrator)) {
-            const msg = "❌ Lệnh này chỉ dành riêng cho Quản Trị Viên (Administrator)!";
+        if (!checkAdminPermission(interactionOrMsg)) {
+            const msg = "❌ Lệnh này chỉ dành riêng cho Chủ Server (Owner) hoặc Quản Trị Viên (Administrator)!";
             return isSlash ? interactionOrMsg.reply({ content: msg, ephemeral: true }) : interactionOrMsg.channel.send(msg);
         }
 
@@ -122,8 +150,8 @@ module.exports = {
         const isSlash = interactionOrMsg.isChatInputCommand?.();
         const member = isSlash ? interactionOrMsg.member : interactionOrMsg.member;
 
-        if (!member.permissions.has(PermissionFlagsBits.Administrator)) {
-            const msg = "❌ Lệnh này chỉ dành riêng cho Quản Trị Viên (Administrator)!";
+        if (!checkAdminPermission(interactionOrMsg)) {
+            const msg = "❌ Lệnh này chỉ dành riêng cho Chủ Server (Owner) hoặc Quản Trị Viên (Administrator)!";
             return isSlash ? interactionOrMsg.reply({ content: msg, ephemeral: true }) : interactionOrMsg.channel.send(msg);
         }
 
@@ -203,8 +231,8 @@ module.exports = {
         const isSlash = interactionOrMsg.isChatInputCommand?.();
         const member = isSlash ? interactionOrMsg.member : interactionOrMsg.member;
 
-        if (!member.permissions.has(PermissionFlagsBits.Administrator)) {
-            const msg = "❌ Lệnh này chỉ dành riêng cho Quản Trị Viên (Administrator)!";
+        if (!checkAdminPermission(interactionOrMsg)) {
+            const msg = "❌ Lệnh này chỉ dành riêng cho Chủ Server (Owner) hoặc Quản Trị Viên (Administrator)!";
             return isSlash ? interactionOrMsg.reply({ content: msg, ephemeral: true }) : interactionOrMsg.channel.send(msg);
         }
 
@@ -230,8 +258,8 @@ module.exports = {
         const isSlash = interactionOrMsg.isChatInputCommand?.();
         const member = isSlash ? interactionOrMsg.member : interactionOrMsg.member;
 
-        if (!member.permissions.has(PermissionFlagsBits.Administrator)) {
-            const msg = "❌ Lệnh này chỉ dành riêng cho Quản Trị Viên (Administrator)!";
+        if (!checkAdminPermission(interactionOrMsg)) {
+            const msg = "❌ Lệnh này chỉ dành riêng cho Chủ Server (Owner) hoặc Quản Trị Viên (Administrator)!";
             return isSlash ? interactionOrMsg.reply({ content: msg, ephemeral: true }) : interactionOrMsg.channel.send(msg);
         }
 
@@ -253,8 +281,8 @@ module.exports = {
         const member = isSlash ? interactionOrMsg.member : interactionOrMsg.member;
         const target = targetMember || (isSlash ? interactionOrMsg.user : interactionOrMsg.author);
 
-        if (!member.permissions.has(PermissionFlagsBits.Administrator)) {
-            const msg = "❌ Lệnh này chỉ dành riêng cho Quản Trị Viên (Administrator)!";
+        if (!checkAdminPermission(interactionOrMsg)) {
+            const msg = "❌ Lệnh này chỉ dành riêng cho Chủ Server (Owner) hoặc Quản Trị Viên (Administrator)!";
             return isSlash ? interactionOrMsg.reply({ content: msg, ephemeral: true }) : interactionOrMsg.channel.send(msg);
         }
 
@@ -316,8 +344,8 @@ module.exports = {
         const isSlash = interactionOrMsg.isChatInputCommand?.();
         const member = isSlash ? interactionOrMsg.member : interactionOrMsg.member;
 
-        if (!member.permissions.has(PermissionFlagsBits.Administrator)) {
-            const msg = "❌ Lệnh này chỉ dành riêng cho Quản Trị Viên (Administrator)!";
+        if (!checkAdminPermission(interactionOrMsg)) {
+            const msg = "❌ Lệnh này chỉ dành riêng cho Chủ Server (Owner) hoặc Quản Trị Viên (Administrator)!";
             return isSlash ? interactionOrMsg.reply({ content: msg, ephemeral: true }) : interactionOrMsg.channel.send(msg);
         }
 
@@ -353,8 +381,8 @@ module.exports = {
         const isSlash = interactionOrMsg.isChatInputCommand?.();
         const member = isSlash ? interactionOrMsg.member : interactionOrMsg.member;
 
-        if (!member.permissions.has(PermissionFlagsBits.Administrator)) {
-            const msg = "❌ Lệnh này chỉ dành riêng cho Quản Trị Viên (Administrator)!";
+        if (!checkAdminPermission(interactionOrMsg)) {
+            const msg = "❌ Lệnh này chỉ dành riêng cho Chủ Server (Owner) hoặc Quản Trị Viên (Administrator)!";
             return isSlash ? interactionOrMsg.reply({ content: msg, ephemeral: true }) : interactionOrMsg.channel.send(msg);
         }
 
@@ -375,8 +403,8 @@ module.exports = {
         const member = isSlash ? interactionOrMsg.member : interactionOrMsg.member;
         const user = isSlash ? interactionOrMsg.user : interactionOrMsg.author;
 
-        if (!member.permissions.has(PermissionFlagsBits.Administrator)) {
-            const msg = "❌ Lệnh này chỉ dành riêng cho Quản Trị Viên (Administrator)!";
+        if (!checkAdminPermission(interactionOrMsg)) {
+            const msg = "❌ Lệnh này chỉ dành riêng cho Chủ Server (Owner) hoặc Quản Trị Viên (Administrator)!";
             return isSlash ? interactionOrMsg.reply({ content: msg, ephemeral: true }) : interactionOrMsg.channel.send(msg);
         }
 
@@ -402,8 +430,8 @@ module.exports = {
         const isSlash = interactionOrMsg.isChatInputCommand?.();
         const member = isSlash ? interactionOrMsg.member : interactionOrMsg.member;
 
-        if (!member.permissions.has(PermissionFlagsBits.Administrator)) {
-            const msg = "❌ Lệnh này chỉ dành riêng cho Quản Trị Viên (Administrator)!";
+        if (!checkAdminPermission(interactionOrMsg)) {
+            const msg = "❌ Lệnh này chỉ dành riêng cho Chủ Server (Owner) hoặc Quản Trị Viên (Administrator)!";
             return isSlash ? interactionOrMsg.reply({ content: msg, ephemeral: true }) : interactionOrMsg.channel.send(msg);
         }
 
@@ -431,8 +459,8 @@ module.exports = {
         const isSlash = interactionOrMsg.isChatInputCommand?.();
         const member = isSlash ? interactionOrMsg.member : interactionOrMsg.member;
 
-        if (!member.permissions.has(PermissionFlagsBits.Administrator)) {
-            const msg = "❌ Chỉ Quản Trị Viên mới có quyền dùng lệnh này!";
+        if (!checkAdminPermission(interactionOrMsg)) {
+            const msg = "❌ Chỉ Chủ Server hoặc Quản Trị Viên mới có quyền dùng lệnh này!";
             return isSlash ? interactionOrMsg.reply({ content: msg, ephemeral: true }) : interactionOrMsg.channel.send(msg);
         }
 
@@ -453,8 +481,8 @@ module.exports = {
         const isSlash = interactionOrMsg.isChatInputCommand?.();
         const member = isSlash ? interactionOrMsg.member : interactionOrMsg.member;
 
-        if (!member.permissions.has(PermissionFlagsBits.Administrator)) {
-            const msg = "❌ Chỉ Quản Trị Viên mới có quyền dùng lệnh này!";
+        if (!checkAdminPermission(interactionOrMsg)) {
+            const msg = "❌ Chỉ Chủ Server hoặc Quản Trị Viên mới có quyền dùng lệnh này!";
             return isSlash ? interactionOrMsg.reply({ content: msg, ephemeral: true }) : interactionOrMsg.channel.send(msg);
         }
 
@@ -478,8 +506,8 @@ module.exports = {
         const isSlash = interactionOrMsg.isChatInputCommand?.();
         const member = isSlash ? interactionOrMsg.member : interactionOrMsg.member;
 
-        if (!member.permissions.has(PermissionFlagsBits.Administrator)) {
-            const msg = "❌ Chỉ Quản Trị Viên mới có quyền dùng lệnh này!";
+        if (!checkAdminPermission(interactionOrMsg)) {
+            const msg = "❌ Chỉ Chủ Server hoặc Quản Trị Viên mới có quyền dùng lệnh này!";
             return isSlash ? interactionOrMsg.reply({ content: msg, ephemeral: true }) : interactionOrMsg.channel.send(msg);
         }
 
@@ -503,8 +531,8 @@ module.exports = {
         const isSlash = interactionOrMsg.isChatInputCommand?.();
         const member = isSlash ? interactionOrMsg.member : interactionOrMsg.member;
 
-        if (!member.permissions.has(PermissionFlagsBits.Administrator)) {
-            const msg = "❌ Chỉ Quản Trị Viên mới có quyền dùng lệnh này!";
+        if (!checkAdminPermission(interactionOrMsg)) {
+            const msg = "❌ Chỉ Chủ Server hoặc Quản Trị Viên mới có quyền dùng lệnh này!";
             return isSlash ? interactionOrMsg.reply({ content: msg, ephemeral: true }) : interactionOrMsg.channel.send(msg);
         }
 
@@ -530,8 +558,8 @@ module.exports = {
         const member = isSlash ? interactionOrMsg.member : interactionOrMsg.member;
         const user = isSlash ? interactionOrMsg.user : interactionOrMsg.author;
 
-        if (!member.permissions.has(PermissionFlagsBits.Administrator)) {
-            const msg = "❌ Lệnh này chỉ dành riêng cho Quản Trị Viên (Administrator)!";
+        if (!checkAdminPermission(interactionOrMsg)) {
+            const msg = "❌ Lệnh này chỉ dành riêng cho Chủ Server (Owner) hoặc Quản Trị Viên (Administrator)!";
             return isSlash ? interactionOrMsg.reply({ content: msg, ephemeral: true }) : interactionOrMsg.channel.send(msg);
         }
 
@@ -555,8 +583,8 @@ module.exports = {
         const isSlash = interactionOrMsg.isChatInputCommand?.();
         const member = isSlash ? interactionOrMsg.member : interactionOrMsg.member;
 
-        if (!member.permissions.has(PermissionFlagsBits.Administrator)) {
-            const msg = "❌ Chỉ Quản Trị Viên mới có quyền dùng lệnh này!";
+        if (!checkAdminPermission(interactionOrMsg)) {
+            const msg = "❌ Chỉ Chủ Server hoặc Quản Trị Viên mới có quyền dùng lệnh này!";
             return isSlash ? interactionOrMsg.reply({ content: msg, ephemeral: true }) : interactionOrMsg.channel.send(msg);
         }
 
@@ -580,8 +608,8 @@ module.exports = {
         const isSlash = interactionOrMsg.isChatInputCommand?.();
         const member = isSlash ? interactionOrMsg.member : interactionOrMsg.member;
 
-        if (!member.permissions.has(PermissionFlagsBits.Administrator)) {
-            const msg = "❌ Chỉ Quản Trị Viên mới có quyền dùng lệnh này!";
+        if (!checkAdminPermission(interactionOrMsg)) {
+            const msg = "❌ Chỉ Chủ Server hoặc Quản Trị Viên mới có quyền dùng lệnh này!";
             return isSlash ? interactionOrMsg.reply({ content: msg, ephemeral: true }) : interactionOrMsg.channel.send(msg);
         }
 
@@ -605,8 +633,8 @@ module.exports = {
         const isSlash = interactionOrMsg.isChatInputCommand?.();
         const member = isSlash ? interactionOrMsg.member : interactionOrMsg.member;
 
-        if (!member.permissions.has(PermissionFlagsBits.Administrator)) {
-            const msg = "❌ Chỉ Quản Trị Viên mới có quyền dùng lệnh này!";
+        if (!checkAdminPermission(interactionOrMsg)) {
+            const msg = "❌ Chỉ Chủ Server hoặc Quản Trị Viên mới có quyền dùng lệnh này!";
             return isSlash ? interactionOrMsg.reply({ content: msg, ephemeral: true }) : interactionOrMsg.channel.send(msg);
         }
 
@@ -631,8 +659,8 @@ module.exports = {
         const isSlash = interactionOrMsg.isChatInputCommand?.();
         const member = isSlash ? interactionOrMsg.member : interactionOrMsg.member;
 
-        if (!member.permissions.has(PermissionFlagsBits.Administrator)) {
-            const msg = "❌ Chỉ Quản Trị Viên mới có quyền chỉnh cheat sòng bạc!";
+        if (!checkAdminPermission(interactionOrMsg)) {
+            const msg = "❌ Chỉ Chủ Server hoặc Quản Trị Viên mới có quyền chỉnh cheat sòng bạc!";
             return isSlash ? interactionOrMsg.reply({ content: msg, ephemeral: true }) : interactionOrMsg.channel.send(msg);
         }
 

@@ -13,6 +13,13 @@ const economy = require('./src/commands/economy');
 const casino = require('./src/commands/casino');
 const multiplayer = require('./src/commands/multiplayer');
 const admin = require('./src/commands/admin');
+const { acquireUserLock, releaseUserLock } = require('./src/utils/database');
+
+const FINANCIAL_COMMANDS = [
+    'dep', 'with', 'vay', 'trano', 'pay', 'rob', 'daily', 'work', 'beg', 'laodong',
+    'tx', 'taixiu', 'bj', 'blackjack', 'xidach', 'cf', 'coinflip', 'slot', 'slots',
+    'bc', 'baucua', 'rps', 'lixi'
+];
 
 const client = new Client({
     intents: [
@@ -131,6 +138,16 @@ client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
 
     const { commandName, options } = interaction;
+    const isFinancial = FINANCIAL_COMMANDS.includes(commandName);
+
+    if (isFinancial) {
+        if (!acquireUserLock(interaction.user.id, 2000)) {
+            return interaction.reply({
+                content: "⏳ **Giao dịch trước đó đang được xử lý!** Vui lòng đợi 1 giây rồi thử lại.",
+                ephemeral: true
+            });
+        }
+    }
 
     try {
         switch (commandName) {
@@ -246,6 +263,10 @@ client.on('interactionCreate', async (interaction) => {
         } else {
             await interaction.reply({ content: errMsg, ephemeral: true }).catch(() => {});
         }
+    } finally {
+        if (isFinancial) {
+            releaseUserLock(interaction.user.id);
+        }
     }
 });
 
@@ -262,6 +283,13 @@ client.on('messageCreate', async (message) => {
     const args = message.content.slice(prefix.length).trim().split(/ +/);
     const cmd = args.shift()?.toLowerCase();
     if (!cmd) return;
+
+    const isFinancial = FINANCIAL_COMMANDS.includes(cmd);
+    if (isFinancial) {
+        if (!acquireUserLock(message.author.id, 2000)) {
+            return message.reply("⏳ **Giao dịch trước đó đang được xử lý!** Vui lòng đợi 1 giây rồi thử lại.").catch(() => {});
+        }
+    }
 
     try {
         switch (cmd) {
@@ -436,6 +464,10 @@ client.on('messageCreate', async (message) => {
     } catch (err) {
         console.error(`❌ Error executing prefix command !${cmd}:`, err);
         message.channel.send("❌ Đã xảy ra lỗi khi thực thi lệnh!").catch(() => {});
+    } finally {
+        if (isFinancial) {
+            releaseUserLock(message.author.id);
+        }
     }
 });
 

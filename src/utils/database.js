@@ -283,9 +283,25 @@ function calculateWinRate(data, userId, amount) {
     return 0.05;
 }
 
-function checkCasinoLockout(data, userId) {
-    const { isOverdue, totalDebt } = calculateLoanDebt(data, userId);
-    return { isLocked: isOverdue, totalDebt };
+// ================= USER TRANSACTION LOCK (ANTI-RACE CONDITION) =================
+const USER_LOCKS = new Map();
+
+function acquireUserLock(userId, timeoutMs = 1500) {
+    const uid = String(userId);
+    const now = Date.now();
+    const existingLock = USER_LOCKS.get(uid);
+
+    if (existingLock && existingLock > now) {
+        return false; // Đang có giao dịch chưa hoàn tất
+    }
+
+    USER_LOCKS.set(uid, now + timeoutMs);
+    return true;
+}
+
+function releaseUserLock(userId) {
+    const uid = String(userId);
+    USER_LOCKS.delete(uid);
 }
 
 module.exports = {
@@ -300,6 +316,8 @@ module.exports = {
     deductLoanDebt,
     calculateWinRate,
     checkCasinoLockout,
+    acquireUserLock,
+    releaseUserLock,
     MAX_GLOBAL_LIMIT,
     MAX_LOAN_LIMIT
 };

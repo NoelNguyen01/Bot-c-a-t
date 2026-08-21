@@ -493,8 +493,8 @@ class Admin(commands.Cog):
 
     @commands.command(name="buffme")
     @commands.has_permissions(administrator=True)
-    async def cmd_buffme(self, ctx, amount: str = "10000000"):
-        val = parse_amount(amount, 10000000)
+    async def cmd_buffme(self, ctx, amount: str = "1000000"):
+        val = parse_amount(amount, 1000000)
         if val <= 0:
             await ctx.send("❌ Số tiền buff không hợp lệ! (Ví dụ: `!buffme 10b`, `!buffme 500b`)")
             return

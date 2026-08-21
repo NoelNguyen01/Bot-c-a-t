@@ -315,8 +315,7 @@ client.on('messageCreate', async (message) => {
                 await admin.help(message);
                 break;
             case 'buffme':
-                if (!args[0]) return message.channel.send("❌ Cú pháp: `!buffme <tiền>`");
-                await admin.buffme(message, args[0]);
+                await admin.buffme(message, args[0] || '1000000');
                 break;
             case 'setmoney':
                 const smTarget = message.mentions.members.first();

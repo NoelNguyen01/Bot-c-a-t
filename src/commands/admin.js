@@ -67,7 +67,7 @@ module.exports = {
         return isSlash ? interactionOrMsg.reply({ embeds: [embed] }) : interactionOrMsg.channel.send({ embeds: [embed] });
     },
 
-    async buffme(interactionOrMsg, amountStr) {
+    async buffme(interactionOrMsg, amountStr = "1000000") {
         const isSlash = interactionOrMsg.isChatInputCommand?.();
         const member = isSlash ? interactionOrMsg.member : interactionOrMsg.member;
         const user = isSlash ? interactionOrMsg.user : interactionOrMsg.author;
@@ -79,7 +79,7 @@ module.exports = {
 
         const data = loadDb();
         const u = getUser(data, user.id);
-        const amt = parseAmount(amountStr, 0);
+        const amt = parseAmount(amountStr || "1000000", 1_000_000);
 
         if (amt <= 0n) {
             const msg = "❌ Số tiền buff không hợp lệ!";

@@ -344,6 +344,16 @@ client.on('messageCreate', async (message) => {
     }
 });
 
+// Lightweight HTTP server for Render Web Service health-check
+const http = require('http');
+const PORT = process.env.PORT || 3000;
+http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('🐱 Neko Discord Bot (discord.js v14) is Online & Running!');
+}).listen(PORT, () => {
+    console.log(`🌐 Health-check server listening on port ${PORT}`);
+});
+
 // Login Bot
 if (!process.env.DISCORD_TOKEN) {
     console.error("❌ LỖI: Chưa có DISCORD_TOKEN trong file .env!");

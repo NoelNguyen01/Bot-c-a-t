@@ -251,11 +251,11 @@ class Economy(commands.Cog):
             return
 
         u = get_user(data, ctx.author.id)
-        max_limit = 999999999999999999999999999999999999999999999999999
-        tier_name = "Vô Cực (Tối đa 999999999999999999999999999999999999999999999999999)"
+        max_limit = 100_000_000  # Giới hạn 100M
+        tier_name = "Hạn mức tối đa 100M (100,000,000 💵)"
 
         if loan_amt > max_limit:
-            await ctx.send(f"❌ Hạn mức vay tối đa là **{max_limit:,}** {COIN}!")
+            await ctx.send(f"❌ Hạn mức vay tối đa của Ngân Hàng là **{max_limit:,}** {COIN} (100M)!")
             return
 
         u["wallet"] = u.get("wallet", 0) + loan_amt
@@ -283,7 +283,7 @@ class Economy(commands.Cog):
         )
         await ctx.send(embed=embed)
 
-    @app_commands.command(name="vay", description="Vay vốn Ngân Hàng (Hạn mức lên tới 999999999999999999999999999999999999999999999999999)")
+    @app_commands.command(name="vay", description="Vay vốn Ngân Hàng (Hạn mức tối đa 100M, lãi 2%/phút)")
     async def slash_vay(self, interaction: discord.Interaction, so_tien: str):
         data = load_db()
         uid = str(interaction.user.id)
@@ -291,7 +291,7 @@ class Economy(commands.Cog):
 
         loan_amt = parse_amount(so_tien, 0)
         if loan_amt <= 0:
-            await interaction.response.send_message("❌ Số tiền vay không hợp lệ! (Ví dụ: `10b`, `50b`, `100b`)", ephemeral=True)
+            await interaction.response.send_message("❌ Số tiền vay không hợp lệ! (Ví dụ: `10m`, `50m`, `100m`)", ephemeral=True)
             return
 
         if uid in loans and loans[uid].get("principal", 0) > 0:
@@ -300,11 +300,11 @@ class Economy(commands.Cog):
             return
 
         u = get_user(data, interaction.user.id)
-        max_limit = 999999999999999999999999999999999999999999999999999
-        tier_name = "Vô Cực (Tối đa 999999999999999999999999999999999999999999999999999)"
+        max_limit = 100_000_000  # Giới hạn 100M
+        tier_name = "Hạn mức tối đa 100M (100,000,000 💵)"
 
         if loan_amt > max_limit:
-            await interaction.response.send_message(f"❌ Hạn mức vay tối đa là **{max_limit:,}** {COIN}!", ephemeral=True)
+            await interaction.response.send_message(f"❌ Hạn mức vay tối đa của Ngân Hàng là **{max_limit:,}** {COIN} (100M)!", ephemeral=True)
             return
 
         u["wallet"] = u.get("wallet", 0) + loan_amt
